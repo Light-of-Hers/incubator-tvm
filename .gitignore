@@ -199,6 +199,13 @@ tvm_t.*
 # Visual Studio Code
 .vscode
 
+# JB Code
+.idea/
+cmake-build-debug/
+
+# tmp shell
+*.sh
+
 # tmp file
 .nfs*
 

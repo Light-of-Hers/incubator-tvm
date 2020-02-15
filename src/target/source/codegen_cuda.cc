@@ -52,8 +52,7 @@ std::string CodeGenCUDA::Finish() {
   if (enable_fp16_) {
     decl_stream << "#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530)\n";
     decl_stream << "#include <cuda_fp16.h>\n";
-    decl_stream << "__device__ half max"
-                << "(half a, half b)\n"
+    decl_stream << "__device__ half max(half a, half b)\n"
                 << "{\n  return __hgt(__half(a), __half(b)) ? a : b;\n}\n";
     decl_stream << "__device__ half min(half a, half b)\n"
                 << "{\n  return __hlt(__half(a), __half(b)) ? a : b;\n}\n";
