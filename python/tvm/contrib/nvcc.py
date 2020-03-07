@@ -75,6 +75,7 @@ def compile_cuda(code,
     file_target = path_target if path_target else temp_target
     cmd = ["nvcc"]
     cmd += ["--%s" % target, "-O3"]
+    cmd += ["-ccbin", "clang-3.8"]
     if isinstance(arch, list):
         cmd += arch
     else:
