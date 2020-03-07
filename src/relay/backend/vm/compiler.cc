@@ -51,7 +51,6 @@ namespace transform {
 
 Pass LambdaLift();
 Pass InlinePrimitives();
-Pass RemoveUnusedFunctions(Array<tvm::PrimExpr> entry_functions);
 
 Pass ManifestAlloc(Target target_host) {
   auto f = tvm::runtime::Registry::Get("relay.transform.ManifestAlloc");
@@ -636,6 +635,9 @@ class VMFunctionCompiler : ExprFunctor<void(const Expr& expr)> {
       // If we are calling a variable, it must be the case that it is a closure so we
       // emit invoke closure here.
       VisitExpr(GetRef<Var>(var_node));
+      Emit(Instruction::InvokeClosure(last_register_, args_registers, NewRegister()));
+    } else if (auto inner_call_node = op.as<CallNode>()) {
+      VisitExpr(GetRef<Call>(inner_call_node));
       Emit(Instruction::InvokeClosure(last_register_, args_registers, NewRegister()));
     } else {
       // Finally if there are any other cases this is a bug.
