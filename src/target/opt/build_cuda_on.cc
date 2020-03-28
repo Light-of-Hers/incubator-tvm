@@ -35,7 +35,7 @@
 #include "../source/codegen_cuda.h"
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../runtime/cuda/cuda_module.h"
-
+#include "../../contrib/bang/codegen_bang.h"
 
 namespace tvm {
 namespace codegen {
@@ -130,6 +130,14 @@ std::string NVRTCCompile(const std::string& code, bool include_path = false) {
 runtime::Module BuildCUDA(Array<LoweredFunc> funcs) {
   using tvm::runtime::Registry;
   bool output_ssa = false;
+
+  CodeGenBANG cgb;
+  cgb.Init(output_ssa);
+  for (auto f : funcs) {
+    cgb.AddFunction(f);
+  }
+  std::cout << cgb.Finish() << std::endl;
+
   CodeGenCUDA cg;
   cg.Init(output_ssa);
 
