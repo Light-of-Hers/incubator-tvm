@@ -26,6 +26,7 @@
 
 #include <tvm/ir/type.h>
 #include <tvm/ir/expr.h>
+#include <tvm/ir/function.h>
 #include <tvm/ir/adt.h>
 
 #include <string>
@@ -162,6 +163,14 @@ class IRModuleNode : public Object {
   TVM_DLL Array<GlobalTypeVar> GetGlobalTypeVars() const;
 
   /*!
+   * \brief Find constructor of ADT using name
+   * \param adt name of the ADT the constructor belongs to
+   * \param cons name of the constructor
+   * \returns Constructor of ADT, error if not found
+   */
+  TVM_DLL Constructor GetConstructor(const std::string& adt, const std::string& cons) const;
+
+  /*!
    * \brief Look up a global function by its variable.
    * \param var The global var to lookup.
    * \returns The function named by the variable argument.
@@ -225,7 +234,7 @@ class IRModuleNode : public Object {
    */
   TVM_DLL std::unordered_set<std::string> Imports() const;
 
-  static constexpr const char* _type_key = "relay.Module";
+  static constexpr const char* _type_key = "IRModule";
   TVM_DECLARE_FINAL_OBJECT_INFO(IRModuleNode, Object);
 
  private:

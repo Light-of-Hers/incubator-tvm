@@ -32,6 +32,7 @@
 #include <string>
 #include <algorithm>
 #include <limits>
+#include <type_traits>
 
 namespace tvm {
 
@@ -149,7 +150,7 @@ class RelayExprNode : public BaseExprNode {
   /*!
    * \return The checked_type
    */
-  const Type& checked_type() const;
+  inline const Type& checked_type() const;
   /*!
    * \brief Check if the inferred(checked) type of the Expr
    *  is backed by a TTypeNode and return it.
@@ -196,7 +197,7 @@ class GlobalVarNode : public RelayExprNode {
     v->Visit("_checked_type_", &checked_type_);
   }
 
-  static constexpr const char* _type_key = "relay.GlobalVar";
+  static constexpr const char* _type_key = "GlobalVar";
   TVM_DECLARE_FINAL_OBJECT_INFO(GlobalVarNode, RelayExprNode);
 };
 
@@ -209,30 +210,6 @@ class GlobalVar : public RelayExpr {
   TVM_DLL explicit GlobalVar(std::string name_hint);
 
   TVM_DEFINE_OBJECT_REF_METHODS(GlobalVar, RelayExpr, GlobalVarNode);
-};
-
-/*!
- * \brief Base node of all functions.
- *
- * We support several variants of functions throughout the stack.
- * All of the functions shares the same type system(via checked_type)
- * to support cross variant calls.
- *
- * \sa BaseFunc
- */
-class BaseFuncNode : public RelayExprNode {
- public:
-  static constexpr const char* _type_key = "BaseFunc";
-  TVM_DECLARE_BASE_OBJECT_INFO(BaseFuncNode, RelayExprNode);
-};
-
-/*!
- * \brief Managed reference to BaseFuncNode.
- * \sa BaseFuncNode
- */
-class BaseFunc : public RelayExpr {
- public:
-  TVM_DEFINE_OBJECT_REF_METHODS(BaseFunc, RelayExpr, BaseFuncNode);
 };
 
 // PrimExprs that are useful as runtime containers.
@@ -331,6 +308,17 @@ class Integer : public IntImm {
    * \param other The other value.
    */
   Integer(IntImm other) : IntImm(std::move(other)) {}  // NOLINT(*)
+  /*!
+   * \brief Constructor from enum
+   * \tparam Enum The enum type.
+   * \param value The enum value.
+   */
+  template<typename ENum,
+           typename = typename std::enable_if<std::is_enum<ENum>::value>::type>
+  explicit Integer(ENum value) : Integer(static_cast<int>(value)) {
+    static_assert(std::is_same<int, typename std::underlying_type<ENum>::type>::value,
+                  "declare enum to be enum int to use visitor");
+  }
   /*!
    * \brief Assign an expression to integer.
    * \param other another expression.
