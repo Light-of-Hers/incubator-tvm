@@ -131,13 +131,6 @@ runtime::Module BuildCUDA(IRModule mod) {
   using tvm::runtime::Registry;
   bool output_ssa = false;
 
-  CodeGenBANG cgb;
-  cgb.Init(output_ssa);
-  for (auto f : funcs) {
-    cgb.AddFunction(f);
-  }
-  std::cout << cgb.Finish() << std::endl;
-
   CodeGenCUDA cg;
   cg.Init(output_ssa);
 
@@ -174,3 +167,4 @@ TVM_REGISTER_GLOBAL("target.build.cuda")
 .set_body_typed(BuildCUDA);
 }  // namespace codegen
 }  // namespace tvm
+
