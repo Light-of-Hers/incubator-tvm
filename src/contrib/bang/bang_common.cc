@@ -13,31 +13,29 @@ namespace tvm {
 namespace runtime {
 
 void *bangLoadModuleFromMem(const char *src) {
-  try {
-    CHECK(system(nullptr) != 0)
-      << "Cannot use shell";
+  CHECK(system(nullptr) != 0)
+    << "Cannot use shell";
 
-    char tmp_src[] = "/tmp/bang_srcXXXXXX";
-    char tmp_obj[] = "/tmp/bang_objXXXXXX";
-    char tmp_lib[] = "/tmp/bang_libXXXXXX";
+  char tmp_src[] = "/tmp/bang_srcXXXXXX";
+  char tmp_obj[] = "/tmp/bang_objXXXXXX";
+  char tmp_lib[] = "/tmp/bang_libXXXXXX";
 
-    int fd = mkstemp(tmp_src) CK;
-    defer { unlink(tmp_src); };
-    mkstemp(tmp_obj) CK, mkstemp(tmp_lib) CK;
-    defer { unlink(tmp_obj), unlink(tmp_lib); };
+  int fd = mkstemp(tmp_src);
+  mkstemp(tmp_obj), mkstemp(tmp_lib);
 
-    write(fd, src, strlen(src));
-    close(fd);
+  write(fd, src, strlen(src));
+  close(fd);
 
-    char cmd_buf[256];
-    sprintf(cmd_buf, "cncc -x bang --bang-mlu-arch=MLU270 -O2 -c %s -o %s && "
-                     "clang++ -shared %s -o %s", tmp_src, tmp_obj, tmp_obj, tmp_lib);
-    system(cmd_buf) CK;
+  char cmd_buf[256];
+  sprintf(cmd_buf, "cncc -x bang --bang-mlu-arch=MLU270 -O2 -c %s -o %s && "
+                   "clang++ -shared %s -o %s",
+          tmp_src, tmp_obj, tmp_obj, tmp_lib);
+  system(cmd_buf);
 
-    return dlopen(tmp_lib, RTLD_NOW) CK;
-  } catch (const std::runtime_error &err) {
-    throw err;
-  }
+  void *lib = dlopen(tmp_lib, RTLD_NOW);
+  unlink(tmp_src), unlink(tmp_obj), unlink(tmp_lib);
+  CHECK(lib != nullptr);
+  return lib;
 }
 void *bangExtractSymbolFromModule(void *mod, const char *sym_name) {
   return dlsym(mod, sym_name) CK;
