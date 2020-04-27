@@ -26,31 +26,31 @@ public:
   void AddFunction(const PrimFunc &f);
 
   // override behavior
-  void PrintFuncPrefix() final;
-  void PreFunctionBody(const PrimFunc &f) final;
-  void InitFuncState(const PrimFunc &f) final;
-  void PrintStorageSync(const CallNode *op) final;
-  void PrintStorageScope(const std::string &scope, std::ostream &os) final;
+  void PrintFuncPrefix() override;
+  void PreFunctionBody(const PrimFunc &f) override;
+  void InitFuncState(const PrimFunc &f) override;
+  void PrintStorageSync(const CallNode *op) override;
+  void PrintStorageScope(const std::string &scope, std::ostream &os) override;
   void PrintVecBinaryOp(
       const std::string &op, DataType t,
-      PrimExpr lhs, PrimExpr rhs, std::ostream &os) final;
-  void PrintType(DataType t, std::ostream &os) final;
-  void BindThreadIndex(const IterVar &iv) final;
+      PrimExpr lhs, PrimExpr rhs, std::ostream &os) override;
+  void PrintType(DataType t, std::ostream &os) override;
+  void BindThreadIndex(const IterVar &iv) override;
 
   // overload visitor
-  void VisitExpr_(const BroadcastNode *op, std::ostream &os) final;
-  void VisitExpr_(const LoadNode *op, std::ostream &os) final;
-  void VisitStmt_(const StoreNode *op) final;
-  void VisitStmt_(const AttrStmtNode *op) final;
-  void VisitStmt_(const AllocateNode *op) final;
+  void VisitExpr_(const BroadcastNode *op, std::ostream &os) override;
+  void VisitStmt_(const AttrStmtNode *op) override;
+  void VisitStmt_(const AllocateNode *op) override;
   void VisitStmt_(const ForNode *op) override;
+  void VisitStmt_(const StoreNode *op) override;
+  void VisitExpr_(const LoadNode *op, std::ostream &os) override;
 
   // other methods
   int GetTaskDim();
   std::array<int, 3> GetTaskDim3();
 
 protected:
-  std::string GetBufferRef(DataType t, const VarNode *buffer, PrimExpr index) final;
+  std::string GetBufferRef(DataType t, const VarNode *buffer, PrimExpr index) override;
 
 private:
   int temp_thread_extent_{};

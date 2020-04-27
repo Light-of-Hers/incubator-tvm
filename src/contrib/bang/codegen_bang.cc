@@ -4,9 +4,9 @@
 
 #include "codegen_bang.h"
 #include "../../arith/compute_expr.h"
-#include "../../tir/pass/ir_util.h"
 #include "./modify_parallel_model.h"
 #include <tvm/tir/stmt_functor.h>
+#include "../../arith/pattern_match.h"
 
 namespace tvm {
 namespace codegen {
@@ -168,11 +168,11 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
     // vectorized load
     CHECK(is_one(op->predicate))
       << "predicated load is not supported";
-    PrimExpr base;
-    if (GetRamp1Base(op->index, lanes, &base)) {
+    arith::PVar<PrimExpr> base;
+    if (arith::ramp(base, 1, op->dtype.lanes()).Match(op->index)) {
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
-      auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base);
+      auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base.Eval());
       auto tmp_vid = GetUniqueName("tmp");
       auto type = Type2String(op->dtype.element_of());
       GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
@@ -186,17 +186,18 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
 }
 void CodeGenBANG::VisitStmt_(const StoreNode *op) {
   int lanes = op->value->dtype.lanes();
+  auto dtype = op->value->dtype;
   if (lanes == 1) {
     CodeGenC::VisitStmt_(op);
   } else {
     // vectorized store
     CHECK(is_one(op->predicate))
       << "predicated store is not supported";
-    PrimExpr base;
-    if (GetRamp1Base(op->index, lanes, &base)) {
+    arith::PVar<PrimExpr> base;
+    if (arith::ramp(base, 1, dtype.lanes()).Match(op->index)) {
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
-      auto dst = GetBufferRef(op->value.dtype(), op->buffer_var.get(), base);
+      auto dst = GetBufferRef(dtype, op->buffer_var.get(), base.Eval());
       auto src = PrintExpr(op->value);
       auto type = Type2String(op->value.dtype().element_of());
       GenStmt() << "__memcpy(" << dst << ", " << src << ", sizeof(" << type << ") * " << lanes

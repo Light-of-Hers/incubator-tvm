@@ -91,7 +91,8 @@ public:
     std::vector<ArgUnion> holders(args.size());
     cnrtKernelParamsBuffer_t pms;
     cnrtGetKernelParamsBuffer(&pms) CK;
-    for (int i = 0; i < arg_types_.size(); ++i) {
+    int len = arg_types_.size();
+    for (int i = 0; i < len; ++i) {
       CHECK_EQ(arg_types_[i].lanes, 1U);
       auto code = arg_types_[i].code;
       auto bits = arg_types_[i].bits;
