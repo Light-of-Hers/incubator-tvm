@@ -69,6 +69,7 @@ tvm_option(USE_ANTLR "Build with ANTLR for Relay parsing" OFF)
 tvm_option(USE_CPP_RPC "Build CPP RPC" OFF)
 tvm_option(USE_TFLITE "Build with tflite support" OFF)
 tvm_option(USE_TENSORFLOW_PATH "TensorFlow root path when use TFLite" none)
+tvm_option(USE_COREML "Build with coreml support" OFF)
 
 if(USE_CPP_RPC AND UNIX)
   message(FATAL_ERROR "USE_CPP_RPC is only supported with WIN32. Use the Makefile for non-Windows.")
@@ -107,7 +108,7 @@ if(MSVC)
   endif()
 else(MSVC)
   if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-    message("Build in Debug mode")
+    message(STATUS "Build in Debug mode")
     set(CMAKE_C_FLAGS "-O0 -g -Wall -fPIC ${CMAKE_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "-O0 -g -Wall -fPIC ${CMAKE_CXX_FLAGS}")
     set(CMAKE_CUDA_FLAGS "-O0 -g -Xcompiler=-Wall -Xcompiler=-fPIC ${CMAKE_CUDA_FLAGS}")
@@ -209,13 +210,6 @@ if(USE_VM_PROFILER)
   list(APPEND COMPILER_SRCS ${BACKEND_VM_PROFILER_SRCS})
 endif(USE_VM_PROFILER)
 
-if(BUILD_FOR_HEXAGON)
-  # Add file implementing posix_memalign.
-  list(APPEND RUNTIME_SRCS src/runtime/hexagon/hexagon_posix.cc)
-
-  add_definitions(-D_MACH_I32=int)
-endif()
-
 file(GLOB DATATYPE_SRCS src/target/datatype/*.cc)
 list(APPEND COMPILER_SRCS ${DATATYPE_SRCS})
 
@@ -228,6 +222,13 @@ file(GLOB RUNTIME_SRCS
   src/runtime/*.cc
   src/runtime/vm/*.cc
 )
+
+if(BUILD_FOR_HEXAGON)
+  # Add file implementing posix_memalign.
+  list(APPEND RUNTIME_SRCS src/runtime/hexagon/hexagon_posix.cc)
+
+  add_definitions(-D_MACH_I32=int)
+endif()
 
 # Package runtime rules
 if(NOT USE_RTTI)
@@ -302,6 +303,7 @@ include(cmake/modules/contrib/HybridDump.cmake)
 include(cmake/modules/contrib/TFLite.cmake)
 include(cmake/modules/contrib/BANG.cmake)
 include(cmake/modules/contrib/TF_TVMDSOOP.cmake)
+include(cmake/modules/contrib/CoreML.cmake)
 
 if(NOT MSVC)
   include(CheckCXXCompilerFlag)
