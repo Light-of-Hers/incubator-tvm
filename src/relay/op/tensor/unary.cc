@@ -128,6 +128,17 @@ RELAY_REGISTER_UNARY_OP("erf")
 .set_attr<FTVMCompute>("FTVMCompute", RELAY_UNARY_COMPUTE(topi::erf));
 
 
+RELAY_REGISTER_UNARY_OP("fast_erf")
+.describe(R"code(Returns the error function value for input array, computed element-wise.
+
+.. math::
+   \fast_erf(x)
+
+)code" TVM_ADD_FILELINE)
+.set_support_level(1)
+.set_attr<FTVMCompute>("FTVMCompute", RELAY_UNARY_COMPUTE(topi::fast_erf));
+
+
 RELAY_REGISTER_UNARY_OP("sqrt")
 .describe(R"code(Returns the sqrt input array, computed element-wise.
 
@@ -415,6 +426,15 @@ ElemwiseArbitraryLayout)
 .set_support_level(10)
 .set_attr<FTVMCompute>("FTVMCompute", NdarraySizeCompute);
 
+RELAY_REGISTER_UNARY_OP("isnan")
+.describe(R"code(Returns whether the input contains any NaN, computed element-wise.
+.. math::
+   isnan(x)
+)code" TVM_ADD_FILELINE)
+.set_support_level(3)
+.add_type_rel("IdentityCompRel", IdentityCompRel)
+.set_attr<FTVMCompute>("FTVMCompute", RELAY_UNARY_COMPUTE(topi::isnan));
+
 RELAY_REGISTER_UNARY_OP("isfinite")
 .describe(R"code(Returns the finiteness of input, computed element-wise.
 .. math::
@@ -427,7 +447,7 @@ RELAY_REGISTER_UNARY_OP("isfinite")
 RELAY_REGISTER_UNARY_OP("isinf")
 .describe(R"code(Returns the infiniteness of input, computed element-wise.
 .. math::
-   isfinite(x)
+   isinf(x)
 )code" TVM_ADD_FILELINE)
 .set_support_level(3)
 .add_type_rel("IdentityCompRel", IdentityCompRel)

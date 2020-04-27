@@ -56,9 +56,9 @@ public:
       mtx_.lock();
       defer { mtx_.unlock(); };
       if (mod_.count(dev) == 0)
-        mod_[dev] = bangLoadModuleFromMem(src_.c_str());
+        mod_[dev] = bangLoadModuleFromMem(src_.c_str(), src_.size());
       return bangExtractSymbolFromModule(mod_[dev], sym_name.c_str());
-    } catch (const std::runtime_error &err) {
+    } catch (const std::exception &err) {
       throw err;
     }
   }
@@ -188,8 +188,7 @@ runtime::Module BuildBANG(IRModule mod) {
       << "CodeGenCUDA: Can only take PrimFunc";
     auto f = Downcast<PrimFunc>(kv.second);
     auto calling_conv = f->GetAttr<Integer>(tvm::attr::kCallingConv);
-    CHECK(calling_conv.defined() &&
-        calling_conv->value == static_cast<int>(CallingConv::kDeviceKernelLaunch))
+    CHECK(calling_conv == CallingConv::kDeviceKernelLaunch)
       << "CodeGenCUDA: expect calling_conv equals CallingConv::kDeviceKernelLaunch";
     cgb.AddFunction(f);
   }

@@ -83,7 +83,7 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr l
   auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
   auto dst = GetUniqueName("tmp");
   auto opt = bang_stream_op().at(op);
-  GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
+  GenStmt() << type << " " << dst << '[' << lanes << "];\n";
   int l1 = lanes / 64 * 64, l2 = lanes % 64;
   os << "(";
   if (l1)
@@ -95,7 +95,7 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr l
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
   CHECK(!t.is_vector())
-      << "Cannot support vector type: " << t;
+    << "Cannot support vector type: " << t;
   if (t.is_int() || t.is_uint()) {
     switch (t.bits()) {
     case 8:
@@ -130,7 +130,7 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   auto value = PrintExpr(op->value);
   auto type = Type2String(op->dtype.element_of());
   int lanes = op->lanes;
-  GenStmt() << "__nram__ " << type << " " << tmp_vid << '[' << lanes << "];\n";
+  GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
   int l1 = lanes / 64 * 64, l2 = lanes % 64;
   os << "(";
   if (l1)
@@ -167,7 +167,7 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
   } else {
     // vectorized load
     CHECK(is_one(op->predicate))
-        << "predicated load is not supported";
+      << "predicated load is not supported";
     PrimExpr base;
     if (GetRamp1Base(op->index, lanes, &base)) {
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
@@ -175,7 +175,7 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
       auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base);
       auto tmp_vid = GetUniqueName("tmp");
       auto type = Type2String(op->dtype.element_of());
-      GenStmt() << "__nram__ " << type << " " << tmp_vid << '[' << lanes << "];\n";
+      GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
       os << "(__memcpy(" << tmp_vid << ", " << ref << ", sizeof(" << type << ") * " << lanes
          << ", " << (scope == "global" ? "GDRAM2NRAM" : "NRAM2NRAM") << "), "
          << tmp_vid << ")";
@@ -191,7 +191,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
   } else {
     // vectorized store
     CHECK(is_one(op->predicate))
-        << "predicated store is not supported";
+      << "predicated store is not supported";
     PrimExpr base;
     if (GetRamp1Base(op->index, lanes, &base)) {
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
@@ -221,31 +221,23 @@ std::string CodeGenBANG::GetBufferRef(DataType t, const VarNode *buffer, PrimExp
 void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
   CHECK(!is_zero(op->condition));
   std::string vid = AllocVarID(op->buffer_var.get());
-  if (op->new_expr.defined()) {
-    // Prefer global static allocation for the program
-    // 虽然不是很懂这句话什么意思，但还是照抄吧
-    CHECK_EQ(op->free_function, "nop");
-    std::string new_data = PrintExpr(op->new_expr);
-    GenStmt() << Type2String(op->dtype) << "* " << vid << " = " << new_data << ";\n";
+  auto constant_size = op->constant_allocation_size();
+  CHECK_GT(constant_size, 0)
+    << "Can only handle constant size stack allocation for now";
+  auto type = Type2String(op->dtype);
+  auto scope = alloc_storage_scope_.at(op->buffer_var.get());
+  if (no_sync_point_) {
+    CHECK_NE(scope, "global");
+    GenStmt() << type << " " << vid << '[' << constant_size << "];\n";
   } else {
-    auto constant_size = op->constant_allocation_size();
-    CHECK_GT(constant_size, 0)
-        << "Can only handle constant size stack allocation for now";
-    auto type = Type2String(op->dtype);
-    auto scope = alloc_storage_scope_.at(op->buffer_var.get());
-    if (no_sync_point_) {
-      CHECK_NE(scope, "global");
+    if (scope == "shared") {
       GenStmt() << type << " " << vid << '[' << constant_size << "];\n";
+    } else if (scope == "local") {
+      auto mem_vid = GetUniqueName(vid + "_mem");
+      GenStmt() << type << " " << mem_vid << '[' << "N_THREAD * " << constant_size << "];\n";
+      GenStmt() << "#define " << vid << " (" << mem_vid << " + THREAD_IDX * " << constant_size << ")\n";
     } else {
-      if (scope == "shared") {
-        GenStmt() << type << " " << vid << '[' << constant_size << "];\n";
-      } else if (scope == "local") {
-        auto mem_vid = GetUniqueName(vid + "_mem");
-        GenStmt() << type << " " << mem_vid << '[' << "N_THREAD * " << constant_size << "];\n";
-        GenStmt() << "#define " << vid << " (" << mem_vid << " + THREAD_IDX * " << constant_size << ")\n";
-      } else {
-        LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
-      }
+      LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
     }
   }
   RegisterHandleType(op->buffer_var.get(), op->dtype);
@@ -276,7 +268,7 @@ void CodeGenBANG::PreFunctionBody(const PrimFunc &f) {
 }
 void CodeGenBANG::InitFuncState(const PrimFunc &f) {
   CHECK(!already_gen_kernel_)
-      << "Cannot generate more than one kernel";
+    << "Cannot generate more than one kernel";
   already_gen_kernel_ = true;
   CodeGenC::InitFuncState(f);
 }

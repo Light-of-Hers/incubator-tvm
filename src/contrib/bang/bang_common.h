@@ -61,8 +61,7 @@ private:
 #define CK +GeneralChecker(__FILE__, __LINE__)
 #define defer DeferGuard CAT(__defer_guard_, __LINE__) = [&]() -> void
 
-void *bangLoadModuleFromFile(const char *path);
-void *bangLoadModuleFromMem(const char *src);
+void *bangLoadModuleFromMem(const char *src, size_t len);
 void *bangExtractSymbolFromModule(void *mod, const char *sym_name);
 void bangUnloadModule(void *mod);
 
