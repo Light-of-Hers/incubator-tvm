@@ -64,6 +64,7 @@ public:
   }
 
 private:
+  std::string data_;
   std::string src_;
   std::unordered_map<std::string, FunctionInfo> fmap_;
   std::map<cnrtDev_t, void *> mod_;
@@ -178,7 +179,7 @@ TVM_REGISTER_GLOBAL("runtime.module.loadbinary_bang")
 
 namespace codegen {
 
-runtime::Module BuildBANG(IRModule mod) {
+runtime::Module BuildBANG(IRModule mod, std::string target) {
   bool output_ssa = false;
 
   CodeGenBANG cgb;
