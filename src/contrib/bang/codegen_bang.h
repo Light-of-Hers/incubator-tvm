@@ -45,6 +45,8 @@ public:
   void VisitStmt_(const StoreNode *op) override;
   void VisitExpr_(const LoadNode *op, std::ostream &os) override;
 
+  void VisitExpr(const PrimExpr &n, std::ostream &os) override;
+
   // other methods
   int GetTaskDim();
   std::array<int, 3> GetTaskDim3();
@@ -53,6 +55,7 @@ protected:
   std::string GetBufferRef(DataType t, const VarNode *buffer, PrimExpr index) override;
 
 private:
+
   int temp_thread_extent_{};
   std::map<std::string, int> par_var_dim_{
       {"blockIdx.x", 1},
@@ -82,6 +85,13 @@ private:
     };
     return ret;
   }
+
+  bool is_src_expr_{false};
+  int src_expr_depth_{0};
+  bool already_stored_{false};
+  std::string dst_buff_;
+  std::string dst_scope_;
+
   bool already_gen_kernel_{false};
   bool no_sync_point_{false};
   std::array<int, 3> task_dim_{0, 0, 0};
@@ -94,6 +104,16 @@ private:
     std::ostringstream os;
     PrintType(t, os);
     return os.str();
+  }
+  inline std::string MoveDir(const std::string &from_scope, const std::string &to_scope) {
+    auto get_scope = [](const std::string &scope) -> std::string {
+      if (scope == "global") {
+        return "GDRAM";
+      } else {
+        return "NRAM";
+      }
+    };
+    return get_scope(from_scope) + "2" + get_scope(to_scope);
   }
 };
 

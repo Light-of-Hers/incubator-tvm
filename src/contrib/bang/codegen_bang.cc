@@ -6,6 +6,7 @@
 #include "../../arith/compute_expr.h"
 #include "./modify_parallel_model.h"
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/expr_functor.h>
 #include "../../arith/pattern_match.h"
 
 namespace tvm {
@@ -71,6 +72,9 @@ std::string CodeGenBANG::Finish() {
       << (used_par_var_.count("threadIdx.y") ? "threadIdx_y" : "0") << " * THREAD_DIM_Z + "
       << (used_par_var_.count("threadIdx.z") ? "threadIdx_z" : "0") << ")\n";
 
+  decl_stream
+      << "#define VEC_STORE \n";
+
   return CodeGenC::Finish();
 }
 void CodeGenBANG::PrintStorageSync(const CallNode *op) {
@@ -78,12 +82,17 @@ void CodeGenBANG::PrintStorageSync(const CallNode *op) {
 void CodeGenBANG::PrintStorageScope(const std::string &scope, std::ostream &os) {
 }
 void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr lhs, PrimExpr rhs, std::ostream &os) {
+  auto dst = GetUniqueName("tmp");
   int lanes = t.lanes();
   auto type = Type2String(t.element_of());
+  if (is_src_expr_ && src_expr_depth_ == 1 && dst_scope_ != "global") {
+    dst = dst_buff_;
+    already_stored_ = true;
+  } else {
+    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
+  }
   auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
-  auto dst = GetUniqueName("tmp");
   auto opt = bang_stream_op().at(op);
-  GenStmt() << type << " " << dst << '[' << lanes << "];\n";
   int l1 = lanes / 64 * 64, l2 = lanes % 64;
   os << "(";
   if (l1)
@@ -94,8 +103,8 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr l
   os << dst << ")";
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
-  CHECK(!t.is_vector())
-    << "Cannot support vector type: " << t;
+//  CHECK(!t.is_vector())
+//    << "Cannot support vector type: " << t;
   if (t.is_int() || t.is_uint()) {
     switch (t.bits()) {
     case 8:
@@ -126,18 +135,25 @@ void CodeGenBANG::BindThreadIndex(const IterVar &iv) {
   used_par_var_.insert(iv->thread_tag);
 }
 void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
-  auto tmp_vid = GetUniqueName("tmp");
-  auto value = PrintExpr(op->value);
+  auto dst = GetUniqueName("tmp");
+  const auto *builtin = "__nramset";
   auto type = Type2String(op->dtype.element_of());
   int lanes = op->lanes;
-  GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
+  if (is_src_expr_ && src_expr_depth_ == 1) {
+    dst = dst_buff_;
+    builtin = "__gdramset";
+    already_stored_ = true;
+  } else {
+    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
+  }
+  auto value = PrintExpr(op->value);
   int l1 = lanes / 64 * 64, l2 = lanes % 64;
   os << "(";
   if (l1)
-    os << "__nramset(" << tmp_vid << ", " << l1 << ", " << value << "), ";
+    os << builtin << "(" << dst << ", " << l1 << ", " << value << "), ";
   if (l2)
-    os << "my_memset<" << type << ">(" << tmp_vid << " + " << l1 << ", " << l2 << ", " << value << "), ";
-  os << tmp_vid << ")";
+    os << "my_memset<" << type << ">(" << dst << " + " << l1 << ", " << l2 << ", " << value << "), ";
+  os << dst << ")";
 }
 void CodeGenBANG::VisitStmt_(const AttrStmtNode *op) {
   if (op->attr_key == tir::attr::thread_extent) {
@@ -153,7 +169,7 @@ void CodeGenBANG::VisitStmt_(const AttrStmtNode *op) {
       no_sync_point_ = true;
     GenStmt() << "THREAD_LOOP {\n";
     auto scope = BeginScope();
-    VisitStmt(op->body);
+    PrintStmt(op->body);
     EndScope(scope);
     GenStmt() << "}\n";
     return;
@@ -173,12 +189,23 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
       auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base.Eval());
-      auto tmp_vid = GetUniqueName("tmp");
       auto type = Type2String(op->dtype.element_of());
-      GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
-      os << "(__memcpy(" << tmp_vid << ", " << ref << ", sizeof(" << type << ") * " << lanes
-         << ", " << (scope == "global" ? "GDRAM2NRAM" : "NRAM2NRAM") << "), "
-         << tmp_vid << ")";
+      if (is_src_expr_ && src_expr_depth_ == 1) {
+        os << "(__memcpy(" << dst_buff_ << ", " << ref << ", sizeof(" << type << ") * " << lanes
+           << ", " << MoveDir(scope, dst_scope_) << "), "
+           << dst_buff_ << ")";
+        already_stored_ = true;
+      } else {
+        if (scope != "global") {
+          os << "(" << ref << ")";
+        } else {
+          auto tmp_vid = GetUniqueName("tmp");
+          GenStmt() << type << " " << tmp_vid << '[' << lanes << "];\n";
+          os << "(__memcpy(" << tmp_vid << ", " << ref << ", sizeof(" << type << ") * " << lanes
+             << ", " << MoveDir(scope, "local") << "), "
+             << tmp_vid << ")";
+        }
+      }
     } else {
       LOG(FATAL) << "not yet implemented";
     }
@@ -195,13 +222,27 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
       << "predicated store is not supported";
     arith::PVar<PrimExpr> base;
     if (arith::ramp(base, 1, dtype.lanes()).Match(op->index)) {
+      GenStmt() << "VEC_STORE {\n";
+      auto mark = BeginScope();
+      auto dst = GetBufferRef(dtype, op->buffer_var.get(), base.Eval());
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
-      auto dst = GetBufferRef(dtype, op->buffer_var.get(), base.Eval());
+
+      dst_buff_ = dst, dst_scope_ = scope;
+      is_src_expr_ = true, src_expr_depth_ = 0;
+      already_stored_ = false;
       auto src = PrintExpr(op->value);
-      auto type = Type2String(op->value.dtype().element_of());
-      GenStmt() << "__memcpy(" << dst << ", " << src << ", sizeof(" << type << ") * " << lanes
-                << ", " << (scope == "global" ? "NRAM2GDRAM" : "NRAM2NRAM") << ");\n";
+      is_src_expr_ = false;
+
+      if (already_stored_) {
+        GenStmt() << src << ";\n";
+      } else {
+        auto type = Type2String(op->value.dtype().element_of());
+        GenStmt() << "__memcpy(" << dst_buff_ << ", " << src << ", sizeof(" << type << ") * " << lanes
+                  << ", " << (scope == "global" ? "NRAM2GDRAM" : "NRAM2NRAM") << ");\n";
+      }
+      EndScope(mark);
+      GenStmt() << "}\n";
     } else {
       LOG(FATAL) << "not yet implemented";
     }
@@ -222,7 +263,7 @@ std::string CodeGenBANG::GetBufferRef(DataType t, const VarNode *buffer, PrimExp
 void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
   CHECK(!is_zero(op->condition));
   std::string vid = AllocVarID(op->buffer_var.get());
-  auto constant_size = op->constant_allocation_size();
+  auto constant_size = op->constant_allocation_size() * op->dtype.lanes();
   CHECK_GT(constant_size, 0)
     << "Can only handle constant size stack allocation for now";
   auto type = Type2String(op->dtype);
@@ -284,6 +325,10 @@ void CodeGenBANG::VisitStmt_(const ForNode *op) {
     GenStmt() << "#pragma unroll\n";
   }
   CodeGenC::VisitStmt_(op);
+}
+void CodeGenBANG::VisitExpr(const PrimExpr &n, std::ostream &os) {
+  src_expr_depth_++;
+  CodeGenC::VisitExpr(n, os);
 }
 
 }
