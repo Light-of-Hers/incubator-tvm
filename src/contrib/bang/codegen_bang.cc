@@ -20,15 +20,20 @@ std::string CodeGenBANG::Finish() {
       << "#include \"mlu.h\"\n"
       << "#include <cstring>\n";
   decl_stream
-      << "template <typename T> "
-      << "__mlu_func__ void my_memset(T *ptr, int cnt, T val) "
-      << "{ for (int i = 0; i < cnt; ++i) ptr[i] = val; }\n";
+      << "#define DECL_MEMSET(name) "
+      << "template <typename T, int VecN, int TotN> "
+      << "__mlu_func__ void name ## _ (T *ptr, T val) "
+      << "{ name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
+  for (const auto &on : bang_memset()) {
+    decl_stream
+        << "DECL_MEMSET(" << on << ")\n";
+  }
   decl_stream
       << "#define DECL_STRM_OP(name, op) "
-      << "template <typename T> "
-      << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1, int cnt) "
-      << "{ for (int i = 0; i < cnt; ++i) dst[i] = src0[i] op src1[i]; }\n";
-  for (auto &on : bang_stream_op()) {
+      << "template <typename T, int VecN, int TotN> "
+      << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
+      << "{ name (dst, src0, src1, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
+  for (const auto &on : bang_stream_op()) {
     decl_stream
         << "DECL_STRM_OP(" << on.second << ", " << on.first << ")\n";
   }
@@ -93,14 +98,10 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr l
   }
   auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
   auto opt = bang_stream_op().at(op);
-  int l1 = lanes / 64 * 64, l2 = lanes % 64;
-  os << "(";
-  if (l1)
-    os << opt << "(" << dst << ", " << src0 << ", " << src1 << ", " << l1 << "), ";
-  if (l2)
-    os << opt << "_<" << type << ">(" << dst << " + " << l1 << ", "
-       << src0 << " + " << l1 << ", " << src1 << " + " << l1 << ", " << l2 << "), ";
-  os << dst << ")";
+  os << "("
+     << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+     << dst << ", " << src0 << ", " << src1 << "), "
+     << dst << ")";
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
 //  CHECK(!t.is_vector())
@@ -147,13 +148,10 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
     GenStmt() << type << " " << dst << '[' << lanes << "];\n";
   }
   auto value = PrintExpr(op->value);
-  int l1 = lanes / 64 * 64, l2 = lanes % 64;
-  os << "(";
-  if (l1)
-    os << builtin << "(" << dst << ", " << l1 << ", " << value << "), ";
-  if (l2)
-    os << "my_memset<" << type << ">(" << dst << " + " << l1 << ", " << l2 << ", " << value << "), ";
-  os << dst << ")";
+  os << "("
+     << builtin << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+     << dst << ", " << value << "), "
+     << dst << ")";
 }
 void CodeGenBANG::VisitStmt_(const AttrStmtNode *op) {
   if (op->attr_key == tir::attr::thread_extent) {
@@ -239,7 +237,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
       } else {
         auto type = Type2String(op->value.dtype().element_of());
         GenStmt() << "__memcpy(" << dst_buff_ << ", " << src << ", sizeof(" << type << ") * " << lanes
-                  << ", " << (scope == "global" ? "NRAM2GDRAM" : "NRAM2NRAM") << ");\n";
+                  << ", " << MoveDir("local", scope) << ");\n";
       }
       EndScope(mark);
       GenStmt() << "}\n";

@@ -85,6 +85,12 @@ private:
     };
     return ret;
   }
+  static inline const std::set<std::string> &bang_memset() {
+    static const std::set<std::string> ret{
+        "__nramset", "__gdramset", "__ldramset"
+    };
+    return ret;
+  }
 
   bool is_src_expr_{false};
   int src_expr_depth_{0};
