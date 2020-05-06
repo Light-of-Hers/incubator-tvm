@@ -86,26 +86,27 @@ void CodeGenBANG::PrintStorageSync(const CallNode *op) {
 }
 void CodeGenBANG::PrintStorageScope(const std::string &scope, std::ostream &os) {
 }
-void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t, PrimExpr lhs, PrimExpr rhs, std::ostream &os) {
-  auto dst = GetUniqueName("tmp");
+void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
+                                   PrimExpr lhs, PrimExpr rhs, std::ostream &os) {
+  auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
   int lanes = t.lanes();
   auto type = Type2String(t.element_of());
-  if (is_src_expr_ && src_expr_depth_ == 1 && dst_scope_ != "global") {
-    dst = dst_buff_;
-    already_stored_ = true;
-  } else {
-    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
-  }
-  auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
   auto opt = bang_stream_op().at(op);
-  os << "("
-     << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-     << dst << ", " << src0 << ", " << src1 << "), "
-     << dst << ")";
+  auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
+  if (is_src_expr_root && dst_scope_ != "global") {
+    already_stored_ = true;
+    os << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+       << dst_buff_ << ", " << src0 << ", " << src1 << ")";
+  } else {
+    auto dst = GetUniqueName("tmp");
+    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
+    os << "("
+       << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+       << dst << ", " << src0 << ", " << src1 << "), "
+       << dst << ")";
+  }
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
-//  CHECK(!t.is_vector())
-//    << "Cannot support vector type: " << t;
   if (t.is_int() || t.is_uint()) {
     switch (t.bits()) {
     case 8:
@@ -136,22 +137,22 @@ void CodeGenBANG::BindThreadIndex(const IterVar &iv) {
   used_par_var_.insert(iv->thread_tag);
 }
 void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
-  auto dst = GetUniqueName("tmp");
-  const auto *builtin = "__nramset";
+  auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
   auto type = Type2String(op->dtype.element_of());
   int lanes = op->lanes;
-  if (is_src_expr_ && src_expr_depth_ == 1) {
-    dst = dst_buff_;
-    builtin = "__gdramset";
-    already_stored_ = true;
-  } else {
-    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
-  }
   auto value = PrintExpr(op->value);
-  os << "("
-     << builtin << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-     << dst << ", " << value << "), "
-     << dst << ")";
+  if (is_src_expr_root) {
+    already_stored_ = true;
+    os << "__gdramset_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+       << dst_buff_ << ", " << value << ")";
+  } else {
+    auto dst = GetUniqueName("tmp");
+    GenStmt() << type << " " << dst << '[' << lanes << "];\n";
+    os << "("
+       << "__nramset_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+       << dst << ", " << value << "), "
+       << dst << ")";
+  }
 }
 void CodeGenBANG::VisitStmt_(const AttrStmtNode *op) {
   if (op->attr_key == tir::attr::thread_extent) {
@@ -184,14 +185,14 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
       << "predicated load is not supported";
     arith::PVar<PrimExpr> base;
     if (arith::ramp(base, 1, op->dtype.lanes()).Match(op->index)) {
+      auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
       auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base.Eval());
       auto type = Type2String(op->dtype.element_of());
-      if (is_src_expr_ && src_expr_depth_ == 1) {
-        os << "(__memcpy(" << dst_buff_ << ", " << ref << ", sizeof(" << type << ") * " << lanes
-           << ", " << MoveDir(scope, dst_scope_) << "), "
-           << dst_buff_ << ")";
+      if (is_src_expr_root) {
+        os << "__memcpy(" << dst_buff_ << ", " << ref << ", sizeof(" << type << ") * " << lanes
+           << ", " << MoveDir(scope, dst_scope_) << ")";
         already_stored_ = true;
       } else {
         if (scope != "global") {
