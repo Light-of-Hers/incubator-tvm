@@ -19,22 +19,31 @@ std::string CodeGenBANG::Finish() {
   decl_stream
       << "#include \"mlu.h\"\n";
   decl_stream
-      << "#define DECL_MEMSET(name) "
+      << "#define DECL_MEMSET_OP(name) "
       << "template <typename T, int VecN, int TotN> "
       << "__mlu_func__ void name ## _ (T *ptr, T val) "
       << "{ name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
-  for (const auto &on : bang_memset()) {
+  for (const auto &on : bang_memset_ops()) {
     decl_stream
-        << "DECL_MEMSET(" << on << ")\n";
+        << "DECL_MEMSET_OP(" << on << ")\n";
   }
   decl_stream
-      << "#define DECL_STRM_OP(name, op) "
+      << "#define DECL_STRM_BIN_OP(name, op) "
       << "template <typename T, int VecN, int TotN> "
       << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
       << "{ name (dst, src0, src1, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
-  for (const auto &on : bang_stream_op()) {
+  for (const auto &on : bang_stream_binary_ops()) {
     decl_stream
-        << "DECL_STRM_OP(" << on.second << ", " << on.first << ")\n";
+        << "DECL_STRM_BIN_OP(" << on.second << ", " << on.first << ")\n";
+  }
+  decl_stream
+      << "#define DECL_STRM_BIN_CONST_OP(name, op) "
+      << "template <typename T, int VecN, int TotN> "
+      << "__mlu_func__ void name ## _ (T *dst, T *src, T val) "
+      << "{ name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
+  for (const auto &on : bang_stream_binary_const_ops()) {
+    decl_stream
+        << "DECL_STRM_BIN_CONST_OP(" << on.second << ", " << on.first << ")\n";
   }
   decl_stream
       << "#define BLOCK_DIM_X " << par_var_dim_["blockIdx.x"] << '\n'
@@ -88,22 +97,33 @@ void CodeGenBANG::PrintStorageScope(const std::string &scope, std::ostream &os) 
 void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
                                    PrimExpr lhs, PrimExpr rhs, std::ostream &os) {
   auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
-  int lanes = t.lanes();
+  auto directly_store = is_src_expr_root && dst_scope_ != "global";
   auto type = Type2String(t.element_of());
-  auto opt = bang_stream_op().at(op);
-  auto src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
-  if (is_src_expr_root && dst_scope_ != "global") {
-    already_stored_ = true;
-    os << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-       << dst_buff_ << ", " << src0 << ", " << src1 << ")";
+  int lanes = t.lanes();
+
+  std::string dst, src0, src1, opt;
+  const auto *lv = lhs.as<BroadcastNode>(), *rv = rhs.as<BroadcastNode>();
+  if (bang_stream_binary_const_ops().count(op) && (lv || rv)) {
+    opt = bang_stream_binary_const_ops().at(op);
+    src0 = PrintExpr(lv ? rhs : lhs);
+    src1 = PrintExpr(lv ? lv->value : rv->value);
   } else {
-    auto dst = GetUniqueName("tmp");
-    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
-    os << "("
-       << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-       << dst << ", " << src0 << ", " << src1 << "), "
-       << dst << ")";
+    opt = bang_stream_binary_ops().at(op);
+    src0 = PrintExpr(lhs), src1 = PrintExpr(rhs);
   }
+
+  if (directly_store) {
+    already_stored_ = true;
+    dst = dst_buff_;
+  } else {
+    dst = GetUniqueName("tmp");
+    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
+    os << "(";
+  }
+  os << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+     << dst << ", " << src0 << ", " << src1 << ")";
+  if (!directly_store)
+    os << ", " << dst << ")";
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
   if (t.is_int() || t.is_uint()) {

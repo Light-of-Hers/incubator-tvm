@@ -77,7 +77,7 @@ private:
     };
     return ret;
   }
-  static inline const std::map<std::string, std::string> &bang_stream_op() {
+  static inline const std::map<std::string, std::string> &bang_stream_binary_ops() {
     static const std::map<std::string, std::string> ret{
         {"+", "__bang_add"},
         {"-", "__bang_sub"},
@@ -85,7 +85,13 @@ private:
     };
     return ret;
   }
-  static inline const std::set<std::string> &bang_memset() {
+  static inline const std::map<std::string, std::string> &bang_stream_binary_const_ops() {
+    static const std::map<std::string, std::string> ret{
+        {"*", "__bang_mul_const"},
+    };
+    return ret;
+  }
+  static inline const std::set<std::string> &bang_memset_ops() {
     static const std::set<std::string> ret{
         "__nramset", "__gdramset", "__ldramset"
     };
