@@ -98,7 +98,7 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
        << dst_buff_ << ", " << src0 << ", " << src1 << ")";
   } else {
     auto dst = GetUniqueName("tmp");
-    GenStmt() << "__nram__" << type << " " << dst << '[' << lanes << "];\n";
+    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
     os << "("
        << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
        << dst << ", " << src0 << ", " << src1 << "), "
@@ -146,7 +146,7 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
        << dst_buff_ << ", " << value << ")";
   } else {
     auto dst = GetUniqueName("tmp");
-    GenStmt() << "__nram__" << type << " " << dst << '[' << lanes << "];\n";
+    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
     os << "("
        << "__nramset_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
        << dst << ", " << value << "), "
@@ -198,7 +198,7 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
           os << "(" << ref << ")";
         } else {
           auto tmp_vid = GetUniqueName("tmp");
-          GenStmt() << "__nram__" << type << " " << tmp_vid << '[' << lanes << "];\n";
+          GenStmt() << "__nram__ " << type << " " << tmp_vid << '[' << lanes << "];\n";
           os << "(__memcpy(" << tmp_vid << ", " << ref << ", sizeof(" << type << ") * " << lanes
              << ", " << MoveDir(scope, "local") << "), "
              << tmp_vid << ")";
@@ -268,13 +268,13 @@ void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
   auto scope = alloc_storage_scope_.at(op->buffer_var.get());
   if (no_sync_point_) {
     CHECK_NE(scope, "global");
-    GenStmt() << "__nram__" << type << " " << vid << '[' << constant_size << "];\n";
+    GenStmt() << "__nram__ " << type << " " << vid << '[' << constant_size << "];\n";
   } else {
     if (scope == "shared") {
-      GenStmt() << "__nram__" << type << " " << vid << '[' << constant_size << "];\n";
+      GenStmt() << "__nram__ " << type << " " << vid << '[' << constant_size << "];\n";
     } else if (scope == "local") {
       auto mem_vid = GetUniqueName(vid + "_mem");
-      GenStmt() << "__nram__" << type << " " << mem_vid << '[' << "N_THREAD * " << constant_size << "];\n";
+      GenStmt() << "__nram__ " << type << " " << mem_vid << '[' << "N_THREAD * " << constant_size << "];\n";
       GenStmt() << "#define " << vid << " (" << mem_vid << " + THREAD_IDX * " << constant_size << ")\n";
     } else {
       LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
