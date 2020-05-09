@@ -160,18 +160,22 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   auto type = Type2String(op->dtype.element_of());
   int lanes = op->lanes;
   auto value = PrintExpr(op->value);
+  std::string dst, builtin;
   if (is_src_expr_root) {
     already_stored_ = true;
-    os << "__gdramset_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-       << dst_buff_ << ", " << value << ")";
+    builtin = dst_scope_ == "global" ? "__gdramset" : "__nramset";
+    dst = dst_buff_;
   } else {
-    auto dst = GetUniqueName("tmp");
+    builtin = "__nramset";
+    dst = GetUniqueName("tmp");
     GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
-    os << "("
-       << "__nramset_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-       << dst << ", " << value << "), "
-       << dst << ")";
   }
+  if (!is_src_expr_root)
+    os << "(";
+  os << builtin << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
+     << dst << ", " << value << ")";
+  if (!is_src_expr_root)
+    os << dst << ")";
 }
 void CodeGenBANG::VisitStmt_(const AttrStmtNode *op) {
   if (op->attr_key == tir::attr::thread_extent) {
