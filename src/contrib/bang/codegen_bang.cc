@@ -22,10 +22,15 @@ std::string CodeGenBANG::Finish() {
   decl_stream
       << "#include \"mlu.h\"\n";
 
+  // declare auxilary
+  decl_stream
+      << "#define ALIGN_DN(n, f) ((n) / (f) * (f))\n"
+      << "#define ALIGN_UP(n, f) (((n) + (f) - 1) / (f) * (f))\n";
+
   // declare stream operations
   decl_stream
       << "#define DECL_MEMSET_OP(name, align) "
-      << "template <typename T, int TotN, int VecN = TotN / align * align> "
+      << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *ptr, T val) "
       << "{ name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
   for (const auto &on : bang_memset_ops()) {
@@ -33,7 +38,7 @@ std::string CodeGenBANG::Finish() {
   }
   decl_stream
       << "#define DECL_STRM_BIN_OP(name, op, align) "
-      << "template <typename T, int TotN, int VecN = TotN / align * align> "
+      << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
       << "{ name (dst, src0, src1, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
   for (const auto &on : bang_stream_binary_ops()) {
@@ -42,7 +47,7 @@ std::string CodeGenBANG::Finish() {
   }
   decl_stream
       << "#define DECL_STRM_BIN_CONST_OP(name, op, align) "
-      << "template <typename T, int TotN, int VecN = TotN / align * align> "
+      << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src, T val) "
       << "{ name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
   for (const auto &on : bang_stream_binary_const_ops()) {
@@ -92,7 +97,7 @@ std::string CodeGenBANG::Finish() {
   decl_stream
       << "#define PRE_DECL "
       << "if (taskIdX >= N_BLOCK) return; "
-      << fmt::format("__nram__ unit8_t {}[{}]; ", nram_tmp_buf_.name(), nram_tmp_buf_.max_size())
+      << fmt::format("__nram__ uint8_t {}[{}]; ", nram_tmp_buf_.name(), nram_tmp_buf_.max_size())
       << (used_par_var_.count("blockIdx.x") ? "int blockIdx_x = BLOCK_IDX_X; " : "")
       << (used_par_var_.count("blockIdx.y") ? "int blockIdx_y = BLOCK_IDX_Y; " : "")
       << (used_par_var_.count("blockIdx.z") ? "int blockIdx_z = BLOCK_IDX_Z; " : "")
