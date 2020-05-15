@@ -86,9 +86,9 @@ public:
   void operator()(TVMArgs args, TVMRetValue *rv) const {
     cnrtDev_t dev;
     cnrtGetCurrentDevice(&dev) CK;
-    if (fcache_.count(dev) == 0) {
-      fcache_[dev] = m_->GetSymbol(dev, func_name_);
-    }
+    auto kernel = fcache_.find(dev);
+    if (kernel == fcache_.end())
+      kernel = fcache_.insert({dev, m_->GetSymbol(dev, func_name_)}).first;
     std::vector<ArgUnion> holders(args.size());
     cnrtKernelParamsBuffer_t pms;
     cnrtGetKernelParamsBuffer(&pms) CK;
@@ -108,7 +108,7 @@ public:
         holders[i].v_uint32 = static_cast<uint32_t>(args.values[i].v_int64);
         cnrtKernelParamsBufferAddParam(pms, &holders[i], sizeof(uint32_t));
       } else if (code == kTVMOpaqueHandle) {
-        cnrtKernelParamsBufferAddParam(pms, (void *) &args.values[i].v_handle, sizeof(void *));
+        cnrtKernelParamsBufferAddParam(pms, (void **) &args.values[i].v_handle, sizeof(void *));
       }
     }
     auto que = BANGThreadEntry::ThreadLocal()->queue;
@@ -117,7 +117,7 @@ public:
     taskDimX = (taskDimX + 15) / 16 * 16;
     cnrtDim3_t dim{taskDimX, 1, 1};
     auto fty = CNRT_FUNC_TYPE_UNION4;
-    cnrtInvokeKernel_V2(fcache_[dev], dim, pms, fty, que) CK;
+    cnrtInvokeKernel_V2(kernel->second, dim, pms, fty, que) CK;
   }
 
 private:

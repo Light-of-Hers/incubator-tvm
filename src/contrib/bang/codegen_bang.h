@@ -13,6 +13,7 @@
 #include <array>
 #include <set>
 #include "../../target/source/codegen_c.h"
+#include "./fmt/ostream.h"
 
 namespace tvm {
 namespace codegen {
@@ -108,6 +109,35 @@ private:
   bool no_sync_point_{false};
   std::array<int, 3> task_dim_{0, 0, 0};
 
+  struct {
+    inline std::string name() const { return name_; }
+    inline int max_size() const { return max_size_; }
+    void init(const std::string &nam) {
+      name_ = nam;
+      max_size_ = 0;
+      scope_ = {0};
+    }
+    inline void enter_scope() { scope_.push_back(scope_.back()); }
+    inline void leave_scope() { scope_.pop_back(); }
+    inline int alloc(int bytes) {
+      int aligned = (scope_.back() + 63) / 64 * 64;
+      scope_.back() = aligned + bytes;
+      max_size_ = std::max(max_size_, aligned + bytes);
+      return aligned;
+    }
+  private:
+    std::string name_{};
+    int max_size_{};
+    std::vector<int> scope_{};
+  } nram_tmp_buf_{};
+
+  inline void GenNRAMTmpBuf(const std::string &type,
+                            const std::string &buf, int bytes) {
+    fmt::print(GenStmt(),
+               "{} *{} = ({} *)({} + {});\n",
+               type, buf, type,
+               nram_tmp_buf_.name(), nram_tmp_buf_.alloc(bytes));
+  }
   inline std::ostream &GenStmt() {
     PrintIndent();
     return stream;

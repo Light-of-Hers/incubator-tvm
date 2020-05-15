@@ -9,6 +9,7 @@ endif ()
 file(GLOB BANG_COMPILER_SRCS
         src/contrib/bang/codegen_bang.cc
         src/contrib/bang/modify_parallel_model.cc
+        src/contrib/bang/fmt/format.cc
         )
 file(GLOB BANG_RUNTIME_SRCS
         src/contrib/bang/bang_module.cc

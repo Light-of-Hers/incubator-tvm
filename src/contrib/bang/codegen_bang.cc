@@ -8,6 +8,8 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/expr_functor.h>
 #include "../../arith/pattern_match.h"
+#include "./fmt/format.h"
+#include "./fmt/ostream.h"
 
 namespace tvm {
 namespace codegen {
@@ -16,34 +18,36 @@ CodeGenBANG::CodeGenBANG() {
   restrict_keyword_ = "__restrict__";
 }
 std::string CodeGenBANG::Finish() {
+  // header
   decl_stream
       << "#include \"mlu.h\"\n";
+
+  // declare stream operations
   decl_stream
-      << "#define DECL_MEMSET_OP(name) "
-      << "template <typename T, int VecN, int TotN> "
+      << "#define DECL_MEMSET_OP(name, align) "
+      << "template <typename T, int TotN, int VecN = TotN / align * align> "
       << "__mlu_func__ void name ## _ (T *ptr, T val) "
       << "{ name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
   for (const auto &on : bang_memset_ops()) {
-    decl_stream
-        << "DECL_MEMSET_OP(" << on << ")\n";
+    fmt::print(decl_stream, "DECL_MEMSET_OP({}, 64)\n", on);
   }
   decl_stream
-      << "#define DECL_STRM_BIN_OP(name, op) "
-      << "template <typename T, int VecN, int TotN> "
+      << "#define DECL_STRM_BIN_OP(name, op, align) "
+      << "template <typename T, int TotN, int VecN = TotN / align * align> "
       << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
       << "{ name (dst, src0, src1, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
   for (const auto &on : bang_stream_binary_ops()) {
-    decl_stream
-        << "DECL_STRM_BIN_OP(" << on.second << ", " << on.first << ")\n";
+    fmt::print(decl_stream, "DECL_STRM_BIN_OP({}, {}, 64)\n",
+               on.second, on.first);
   }
   decl_stream
-      << "#define DECL_STRM_BIN_CONST_OP(name, op) "
-      << "template <typename T, int VecN, int TotN> "
+      << "#define DECL_STRM_BIN_CONST_OP(name, op, align) "
+      << "template <typename T, int TotN, int VecN = TotN / align * align> "
       << "__mlu_func__ void name ## _ (T *dst, T *src, T val) "
       << "{ name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
   for (const auto &on : bang_stream_binary_const_ops()) {
-    decl_stream
-        << "DECL_STRM_BIN_CONST_OP(" << on.second << ", " << on.first << ")\n";
+    fmt::print(decl_stream, "DECL_STRM_BIN_CONST_OP({}, {}, 64)\n",
+               on.second, on.first);
   }
   decl_stream
       << "#define BLOCK_DIM_X " << par_var_dim_["blockIdx.x"] << '\n'
@@ -57,16 +61,10 @@ std::string CodeGenBANG::Finish() {
       << "#define BLOCK_IDX_Y ((taskIdX / BLOCK_DIM_Z) % BLOCK_DIM_Y)\n"
       << "#define BLOCK_IDX_Z (taskIdX % BLOCK_DIM_Z)\n";
   decl_stream
-      << "#define PAR_VAR_DECL "
-      << "if (taskIdX >= N_BLOCK) return; "
-      << (used_par_var_.count("blockIdx.x") ? "int blockIdx_x = BLOCK_IDX_X; " : "")
-      << (used_par_var_.count("blockIdx.y") ? "int blockIdx_y = BLOCK_IDX_Y; " : "")
-      << (used_par_var_.count("blockIdx.z") ? "int blockIdx_z = BLOCK_IDX_Z; " : "")
-      << '\n';
-  decl_stream
       << "#define N_BLOCK (BLOCK_DIM_X * BLOCK_DIM_Y * BLOCK_DIM_Z)\n"
       << "#define N_THREAD (THREAD_DIM_X * THREAD_DIM_Y * THREAD_DIM_Z)\n";
 
+  // declare thread-loop
   decl_stream
       << "#define THREAD_LOOP ";
   for (auto axis : {"threadIdx.x", "threadIdx.y", "threadIdx.z"}) {
@@ -79,14 +77,26 @@ std::string CodeGenBANG::Finish() {
   }
   decl_stream << '\n';
 
+  // declare thread-idx mapping
   decl_stream
       << "#define THREAD_IDX ("
       << (used_par_var_.count("threadIdx.x") ? "threadIdx_x" : "0") << " * (THREAD_DIM_Y * THREAD_DIM_Z) + "
       << (used_par_var_.count("threadIdx.y") ? "threadIdx_y" : "0") << " * THREAD_DIM_Z + "
       << (used_par_var_.count("threadIdx.z") ? "threadIdx_z" : "0") << ")\n";
 
+  // declare vectorized store
   decl_stream
       << "#define VEC_STORE \n";
+
+  // declare function pre-delcaration
+  decl_stream
+      << "#define PRE_DECL "
+      << "if (taskIdX >= N_BLOCK) return; "
+      << fmt::format("__nram__ unit8_t {}[{}]; ", nram_tmp_buf_.name(), nram_tmp_buf_.max_size())
+      << (used_par_var_.count("blockIdx.x") ? "int blockIdx_x = BLOCK_IDX_X; " : "")
+      << (used_par_var_.count("blockIdx.y") ? "int blockIdx_y = BLOCK_IDX_Y; " : "")
+      << (used_par_var_.count("blockIdx.z") ? "int blockIdx_z = BLOCK_IDX_Z; " : "")
+      << '\n';
 
   return CodeGenC::Finish();
 }
@@ -100,6 +110,7 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
   auto directly_store = is_src_expr_root && dst_scope_ != "global";
   auto type = Type2String(t.element_of());
   int lanes = t.lanes();
+  int bytes = t.lanes() * t.bytes();
 
   std::string dst, src0, src1, opt;
   const auto *lv = lhs.as<BroadcastNode>(), *rv = rhs.as<BroadcastNode>();
@@ -117,11 +128,11 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
     dst = dst_buff_;
   } else {
     dst = GetUniqueName("tmp");
-    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
+    GenNRAMTmpBuf(type, dst, bytes);
     os << "(";
   }
-  os << opt << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-     << dst << ", " << src0 << ", " << src1 << ")";
+  fmt::print(os, "{}_<{}, {}>({}, {}, {})",
+             opt, type, lanes, dst, src0, src1);
   if (!directly_store)
     os << ", " << dst << ")";
 }
@@ -159,6 +170,7 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
   auto type = Type2String(op->dtype.element_of());
   int lanes = op->lanes;
+  int bytes = lanes * op->dtype.bytes();
   auto value = PrintExpr(op->value);
   std::string dst, builtin;
   if (is_src_expr_root) {
@@ -168,12 +180,11 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   } else {
     builtin = "__nramset";
     dst = GetUniqueName("tmp");
-    GenStmt() << "__nram__ " << type << " " << dst << '[' << lanes << "];\n";
+    GenNRAMTmpBuf(type, dst, bytes);
   }
   if (!is_src_expr_root)
     os << "(";
-  os << builtin << "_<" << type << ", " << (lanes / 64 * 64) << ", " << lanes << ">("
-     << dst << ", " << value << ")";
+  fmt::print(os, "{}_<{}, {}>({}, {})", builtin, type, lanes, dst, value);
   if (!is_src_expr_root)
     os << dst << ")";
 }
@@ -214,18 +225,18 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
       auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base.Eval());
       auto type = Type2String(op->dtype.element_of());
       if (is_src_expr_root) {
-        os << "__memcpy(" << dst_buff_ << ", " << ref << ", sizeof(" << type << ") * " << lanes
-           << ", " << MoveDir(scope, dst_scope_) << ")";
+        fmt::print(os, "__memcpy({}, {}, sizeof({}) * {}, {})",
+                   dst_buff_, ref, type, lanes, MoveDir(scope, dst_scope_));
         already_stored_ = true;
       } else {
         if (scope != "global") {
           os << "(" << ref << ")";
         } else {
           auto tmp_vid = GetUniqueName("tmp");
-          GenStmt() << "__nram__ " << type << " " << tmp_vid << '[' << lanes << "];\n";
-          os << "(__memcpy(" << tmp_vid << ", " << ref << ", sizeof(" << type << ") * " << lanes
-             << ", " << MoveDir(scope, "local") << "), "
-             << tmp_vid << ")";
+          int bytes = op->dtype.bytes() * lanes;
+          GenNRAMTmpBuf(type, tmp_vid, bytes);
+          fmt::print(os, "(__memcpy({}, {}, sizeof({}) * {}, {}), {})",
+                     tmp_vid, ref, type, lanes, MoveDir(scope, "local"), tmp_vid);
         }
       }
     } else {
@@ -245,6 +256,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
     arith::PVar<PrimExpr> base;
     if (arith::ramp(base, 1, dtype.lanes()).Match(op->index)) {
       GenStmt() << "VEC_STORE {\n";
+      nram_tmp_buf_.enter_scope();
       auto mark = BeginScope();
       auto dst = GetBufferRef(dtype, op->buffer_var.get(), base.Eval());
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
@@ -260,10 +272,11 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
         GenStmt() << src << ";\n";
       } else {
         auto type = Type2String(op->value.dtype().element_of());
-        GenStmt() << "__memcpy(" << dst_buff_ << ", " << src << ", sizeof(" << type << ") * " << lanes
-                  << ", " << MoveDir("local", scope) << ");\n";
+        fmt::print(GenStmt(), "__memcpy({}, {}, sizeof({}) * {}, {});\n",
+                   dst_buff_, src, type, lanes, MoveDir("local", scope));
       }
       EndScope(mark);
+      nram_tmp_buf_.leave_scope();
       GenStmt() << "}\n";
     } else {
       LOG(FATAL) << "not yet implemented";
@@ -292,14 +305,14 @@ void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
   auto scope = alloc_storage_scope_.at(op->buffer_var.get());
   if (no_sync_point_) {
     CHECK_NE(scope, "global");
-    GenStmt() << "__nram__ " << type << " " << vid << '[' << constant_size << "];\n";
+    fmt::print(GenStmt(), "__nram__ {} {}[{}];\n", type, vid, constant_size);
   } else {
     if (scope == "shared") {
-      GenStmt() << "__nram__ " << type << " " << vid << '[' << constant_size << "];\n";
+      fmt::print(GenStmt(), "__nram__ {} {}[{}];\n", type, vid, constant_size);
     } else if (scope == "local") {
       auto mem_vid = GetUniqueName(vid + "_mem");
-      GenStmt() << "__nram__ " << type << " " << mem_vid << '[' << "N_THREAD * " << constant_size << "];\n";
-      GenStmt() << "#define " << vid << " (" << mem_vid << " + THREAD_IDX * " << constant_size << ")\n";
+      fmt::print(GenStmt(), "__nram__ {} {}[N_THREAD * {}];\n", type, mem_vid, constant_size);
+      fmt::print(GenStmt(), "#define {} ({} + THREAD_IDX * {})\n", vid, mem_vid, constant_size);
     } else {
       LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
     }
@@ -328,12 +341,13 @@ void CodeGenBANG::PrintFuncPrefix() {
   stream << "extern \"C\" __mlu_entry__ void";
 }
 void CodeGenBANG::PreFunctionBody(const PrimFunc &f) {
-  GenStmt() << "PAR_VAR_DECL\n";
+  GenStmt() << "PRE_DECL\n";
 }
 void CodeGenBANG::InitFuncState(const PrimFunc &f) {
   CHECK(!already_gen_kernel_)
     << "Cannot generate more than one kernel";
   already_gen_kernel_ = true;
+  nram_tmp_buf_.init(GetUniqueName("nram_tmp_buf"));
   CodeGenC::InitFuncState(f);
 }
 void CodeGenBANG::AddFunction(const PrimFunc &f) {
