@@ -222,12 +222,13 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
     // vectorized load
     CHECK(is_one(op->predicate))
       << "predicated load is not supported";
-    arith::PVar<PrimExpr> base;
-    if (arith::ramp(base, 1, op->dtype.lanes()).Match(op->index)) {
+    const auto *ramp = op->index.as<RampNode>();
+    const auto *stride = ramp ? ramp->stride.as<IntImmNode>() : nullptr;
+    if (stride && stride->value == 1) {
       auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
-      auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), base.Eval());
+      auto ref = GetBufferRef(op->dtype, op->buffer_var.get(), ramp->base);
       auto type = Type2String(op->dtype.element_of());
       if (is_src_expr_root) {
         fmt::print(os, "__memcpy({}, {}, sizeof({}) * {}, {})",
@@ -258,12 +259,13 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
     // vectorized store
     CHECK(is_one(op->predicate))
       << "predicated store is not supported";
-    arith::PVar<PrimExpr> base;
-    if (arith::ramp(base, 1, dtype.lanes()).Match(op->index)) {
+    const auto *ramp = op->index.as<RampNode>();
+    const auto *stride = ramp ? ramp->stride.as<IntImmNode>() : nullptr;
+    if (stride && stride->value == 1) {
       GenStmt() << "VEC_STORE {\n";
       nram_tmp_buf_.enter_scope();
       auto mark = BeginScope();
-      auto dst = GetBufferRef(dtype, op->buffer_var.get(), base.Eval());
+      auto dst = GetBufferRef(dtype, op->buffer_var.get(), ramp->base);
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
 
