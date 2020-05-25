@@ -32,7 +32,7 @@ std::string CodeGenBANG::Finish() {
       << "#define DECL_MEMSET_OP(name, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *ptr, T val) "
-      << "{ name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
+      << "{ if constexpr (VecN > 0) name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
   for (const auto &on : bang_memset_ops()) {
     fmt::print(decl_stream, "DECL_MEMSET_OP({}, 64)\n", on);
   }
@@ -40,7 +40,7 @@ std::string CodeGenBANG::Finish() {
       << "#define DECL_STRM_BIN_OP(name, op, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
-      << "{ name (dst, src0, src1, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
+      << "{ if constexpr (VecN > 0) name (dst, src0, src1, VecN); for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
   for (const auto &on : bang_stream_binary_ops()) {
     fmt::print(decl_stream, "DECL_STRM_BIN_OP({}, {}, 64)\n",
                on.second, on.first);
@@ -49,7 +49,7 @@ std::string CodeGenBANG::Finish() {
       << "#define DECL_STRM_BIN_CONST_OP(name, op, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src, T val) "
-      << "{ name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
+      << "{ if constexpr (VecN > 0) name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
   for (const auto &on : bang_stream_binary_const_ops()) {
     fmt::print(decl_stream, "DECL_STRM_BIN_CONST_OP({}, {}, 64)\n",
                on.second, on.first);
