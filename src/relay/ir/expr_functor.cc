@@ -142,7 +142,8 @@ void MixedModeVisitor::VisitExpr_(const TupleGetItemNode* op) {}
 
 void MixedModeMutator::VisitLeaf(const Expr& expr) {
   if (!memo_.count(expr)) {
-    this->DispatchVisitExpr(expr);
+    Expr ret = this->DispatchVisitExpr(expr);
+    memo_[expr] = ret;
   }
 }
 
@@ -163,9 +164,7 @@ Expr MixedModeMutator::VisitExpr(const Expr& expr) {
     return memo_[expr];
   } else {
     ExpandDataflow(expr, fcheck_visited, fvisit_leaf);
-    Expr ret = this->DispatchVisitExpr(expr);
-    memo_[expr] = ret;
-    return ret;
+    return memo_[expr];
   }
 }
 
@@ -347,16 +346,28 @@ Expr ExprMutator::VisitExpr_(const RefWriteNode* op) {
 Expr ExprMutator::VisitExpr_(const ConstructorNode* c) { return GetRef<Expr>(c); }
 
 Expr ExprMutator::VisitExpr_(const MatchNode* m) {
+  bool unchanged = true;
   std::vector<Clause> clauses;
   for (const Clause& p : m->clauses) {
-    clauses.push_back(VisitClause(p));
+    Clause c = VisitClause(p);
+    clauses.push_back(c);
+    unchanged &= c.same_as(p);
   }
-  return Match(Mutate(m->data), clauses, m->complete);
+  Expr data = Mutate(m->data);
+  unchanged &= data.same_as(m->data);
+  if (unchanged) {
+    return GetRef<Expr>(m);
+  }
+  return Match(data, clauses, m->complete);
 }
 
 Clause ExprMutator::VisitClause(const Clause& c) {
   Pattern p = VisitPattern(c->lhs);
-  return Clause(p, Mutate(c->rhs));
+  Expr rhs = Mutate(c->rhs);
+  if (p.same_as(c->lhs) && rhs.same_as(c->rhs)) {
+    return c;
+  }
+  return Clause(p, rhs);
 }
 
 Pattern ExprMutator::VisitPattern(const Pattern& p) { return p; }

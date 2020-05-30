@@ -31,7 +31,6 @@ from . import _ffi_api
 
 
 def build_config(opt_level=2,
-                 fallback_device=_nd.cpu(),
                  required_pass=None,
                  disabled_pass=None,
                  trace=None):
@@ -59,10 +58,6 @@ def build_config(opt_level=2,
                 "FastMath": 4
             }
 
-    fallback_device : int, str, or tvmContext, optional
-        The fallback device. It is also used as the default device for
-        operators without specified device during heterogeneous execution.
-
     required_pass: set of str, optional
         Optimization passes that are required regardless of optimization level.
 
@@ -77,9 +72,8 @@ def build_config(opt_level=2,
     pass_context: PassContext
         The pass context for optimizations.
     """
-    return tvm.ir.transform.PassContext(
-        opt_level, fallback_device, required_pass,
-        disabled_pass, trace)
+    return tvm.ir.transform.PassContext(opt_level, required_pass,
+                                        disabled_pass, trace)
 
 
 @tvm._ffi.register_object("relay.FunctionPass")
@@ -380,7 +374,7 @@ def MergeComposite(pattern_table):
 
     Parameters
     ----------
-    pattern_table : list(tuple)
+    pattern_table : List[Tuple[str, tvm.relay.dataflow_pattern.DFPattern, Function]]
         A list of (pattern_name, pattern, check) tuples.
         The order of the patterns in the list will determine the order
         of priority in which they are matched.
@@ -656,7 +650,8 @@ def to_cps(func, mod=None):
     result: tvm.relay.Function
       The output function.
     """
-    return _ffi_api.to_cps(func, mod)
+    use_mod = mod if mod is not None else tvm.ir.IRModule()
+    return _ffi_api.to_cps(func, use_mod)
 
 
 def un_cps(func):

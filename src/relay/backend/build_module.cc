@@ -304,7 +304,12 @@ class RelayBuildModule : public runtime::ModuleNode {
     // Handle heterogeneous compilation.
     transform::PassContext pass_ctx = PassContext::Current();
     if (targets_.size() > 1) {
-      relay_module = RunDeviceAnnotationPass(relay_module, pass_ctx->fallback_device);
+      Optional<IntImm> opt_fallback_dev =
+          pass_ctx->GetConfig("relay.fallback_device_type",
+                              IntImm(runtime::DataType::Int(32), static_cast<int>(kDLCPU)));
+      auto fallback_dev = opt_fallback_dev.value();
+      CHECK_GT(fallback_dev->value, 0U);
+      relay_module = RunDeviceAnnotationPass(relay_module, fallback_dev->value);
     }
 
     // Fuse the operations if it is needed.
@@ -445,7 +450,7 @@ class RelayBuildModule : public runtime::ModuleNode {
         ret_.mod = tvm::codegen::CSourceModuleCreate(";", "");
       }
     } else {
-      ret_.mod = tvm::build(lowered_funcs, target_host_, BuildConfig::Current());
+      ret_.mod = tvm::build(lowered_funcs, target_host_);
     }
 
     Array<tvm::runtime::Module> ext_mods = graph_codegen_->GetExternalModules();

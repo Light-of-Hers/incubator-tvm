@@ -64,6 +64,7 @@ def get_tvm_output(graph_def, input_data, target, ctx, output_shape=None, output
     input_names, shape_dict = get_input_data_shape_dict(graph_def, input_data)
 
     mod, params = relay.frontend.from_onnx(graph_def, shape_dict, opset=opset)
+
     with relay.build_config(opt_level=1):
         graph, lib, params = relay.build(mod,
                                          target,
@@ -1667,7 +1668,7 @@ def test_prelu():
         onnx_out = get_onnxruntime_output(model, [indata, slopedata])
 
         for target, ctx in [('llvm', tvm.cpu())]:
-            tvm_out = get_tvm_output(model, [indata, slopedata], target, ctx, list(x_shape), 
+            tvm_out = get_tvm_output(model, [indata, slopedata], target, ctx, list(x_shape),
                     output_dtype='float32')
             tvm.testing.assert_allclose(onnx_out[0], tvm_out, rtol=1e-05, atol=1e-05)
 
@@ -2303,6 +2304,76 @@ def test_pooling():
                        auto_pad='SAME_UPPER')
 
 
+def verify_lppool(x_shape, kernel_shape, p, strides, pads, out_shape, auto_pad="NOTSET"):
+    x_np = np.random.uniform(size=x_shape).astype('float32')
+
+    if pads is None:
+        pool_node = helper.make_node("LpPool",
+                                    inputs=["x"],
+                                    outputs=["y"],
+                                    kernel_shape=kernel_shape,
+                                    p = p,
+                                    auto_pad=auto_pad,
+                                    strides=strides)
+    else:
+        pool_node = helper.make_node("LpPool",
+                                    inputs=["x"],
+                                    outputs=["y"],
+                                    kernel_shape=kernel_shape,
+                                    p = p,
+                                    pads=pads,
+                                    strides=strides)
+
+    graph = helper.make_graph([pool_node],
+                              "lppool_test",
+                              inputs=[helper.make_tensor_value_info("x",
+                                                                    TensorProto.FLOAT, list(x_shape))],
+                              outputs=[helper.make_tensor_value_info("y",
+                                                                     TensorProto.FLOAT, list(out_shape))])
+
+    model = helper.make_model(graph, producer_name='lppool_test')
+
+    for target, ctx in ctx_list():
+        onnx_out = get_onnxruntime_output(model, x_np, 'float32')
+        tvm_out = get_tvm_output(
+            model, [x_np], target, ctx, out_shape)
+        tvm.testing.assert_allclose(onnx_out, tvm_out, rtol=1e-5, atol=1e-5)
+
+
+def test_lppool():
+    # Pool1D
+    verify_lppool(x_shape=[1, 1, 32], kernel_shape=[3], p=2, strides=[1], pads=[1, 1],
+                  out_shape=[1, 1, 32])
+
+    # Pool2D
+    verify_lppool(x_shape=[1, 1, 32, 32], kernel_shape=[3, 3], p=2, strides=[1, 1],
+                  pads=[1, 1, 1, 1], out_shape=[1, 1, 32, 32])
+
+    # Pool1D with stride
+    verify_lppool(x_shape=[1, 1, 32], kernel_shape=[3], p=2, strides=[2], pads=[1, 1],
+                  out_shape=[1, 1, 16])
+
+    # Pool2D with stride
+    verify_lppool(x_shape=[1, 1, 32, 32], kernel_shape=[3, 3], p=2, strides=[2, 2],
+                  pads=[1, 1, 1, 1], out_shape=[1, 1, 16, 16])
+
+    # Pool1D with stride and autopadding
+    verify_lppool(x_shape=[1, 1, 32], kernel_shape=[3], p=2, strides=[2], pads=None,
+                  out_shape=[1, 1, 16], auto_pad='SAME_UPPER')
+
+    # Pool2D with stride and autopadding
+    verify_lppool(x_shape=[1, 1, 32, 32], kernel_shape=[3, 3], p=2, strides=[2, 2],
+                  pads=None, out_shape=[1, 1, 16, 16], auto_pad='SAME_UPPER')
+
+    # Pool3D with stride
+    verify_lppool(x_shape=[1, 1, 32, 32, 32], kernel_shape=[3, 3, 3], p=2, strides=[2, 2, 2],
+                  pads=[1, 1, 1, 1, 1, 1], out_shape=[1, 1, 16, 16, 16])
+
+    # Pool3D with stride and autopadding
+    verify_lppool(x_shape=[1, 1, 32, 32, 32], kernel_shape=[3, 3, 3], p=2, strides=[2, 2, 2],
+                  pads=None, out_shape=[1, 1, 16, 16, 16], auto_pad='SAME_UPPER')
+
+
 def verify_lstm(seq_length,
                 batch_size,
                 input_size,
@@ -2572,7 +2643,7 @@ def test_topk():
                                   inputs=[helper.make_tensor_value_info("X", TensorProto.FLOAT, list(input_dims)),
                                           helper.make_tensor_value_info("K", TensorProto.INT64, [1,])],
                                   initializer=[helper.make_tensor("K", TensorProto.INT64, [1], [K])],
-                                  outputs=[helper.make_tensor_value_info("Values", TensorProto.FLOAT, output_dims), 
+                                  outputs=[helper.make_tensor_value_info("Values", TensorProto.FLOAT, output_dims),
                                            helper.make_tensor_value_info("Indicies", TensorProto.INT64, output_dims)])
 
         model = helper.make_model(graph, producer_name='topk_test')
@@ -2581,10 +2652,10 @@ def test_topk():
         onnx_out = get_onnxruntime_output(model, [indata, k])
 
         for target, ctx in [('llvm', tvm.cpu())]:
-            tvm_out = get_tvm_output(model, indata, target, ctx, [output_dims, output_dims], 
+            tvm_out = get_tvm_output(model, indata, target, ctx, [output_dims, output_dims],
                     output_dtype=['float32', 'int64'])
             tvm.testing.assert_allclose(onnx_out, tvm_out, rtol=1e-05, atol=1e-05)
-    
+
     for n in [12, 32]:
         for shape in [[n], [n, n], [n, n, n]]:
             for k in [1, 5, 10]:
@@ -2593,7 +2664,7 @@ def test_topk():
         verify_topk([n, n, n], 5, 0)
         verify_topk([n, n, n], 5, 1)
         verify_topk([n, n, n], 5, 2)
-    
+
 
 def test_roi_align():
     def verify_roi_align(input_dims, num_roi, output_height, output_width, sampling_ratio=0, spatial_scale=1.0):
@@ -2721,6 +2792,7 @@ if __name__ == '__main__':
     test_convtranspose()
     test_unsqueeze_constant()
     test_pooling()
+    test_lppool()
     test_lstm()
     test_resize()
     test_nonzero()
