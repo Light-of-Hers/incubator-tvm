@@ -6,6 +6,8 @@
 #include <cnrt.h>
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/target/target_info.h>
+#include <tvm/tir/var.h>
 #include <sstream>
 #include <cstring>
 #include <dmlc/thread_local.h>
@@ -181,6 +183,24 @@ TVM_REGISTER_GLOBAL("device_api.ext_dev")
 .set_body([](TVMArgs args, TVMRetValue *rv) {
   DeviceAPI *ptr = BANGDeviceAPI::Global().get();
   *rv = static_cast<void *>(ptr);
+});
+
+TVM_REGISTER_GLOBAL("tvm.info.mem.local.nram")
+.set_body_typed([]() {
+  auto info = make_object<MemoryInfoNode>();
+  info->unit_bits = 8;
+  info->max_num_bits = 512 * 1024 * 8;
+  info->max_simd_bits = 64 * 8;
+  return MemoryInfo(info);
+});
+
+TVM_REGISTER_GLOBAL("tvm.info.mem.local.wram")
+.set_body_typed([]() {
+  auto info = make_object<MemoryInfoNode>();
+  info->unit_bits = 8;
+  info->max_num_bits = 1024 * 1024 * 8;
+  info->max_simd_bits = 64 * 8;
+  return MemoryInfo(info);
 });
 
 }

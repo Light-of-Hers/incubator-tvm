@@ -89,24 +89,29 @@ private:
   static inline const std::map<std::string, std::string> &bang_stream_binary_const_ops() {
     static const std::map<std::string, std::string> ret{
         {"*", "__bang_mul_const"},
+        {"+", "__bang_add_const"},
+        {"-", "__bang_sub_const"},
     };
     return ret;
   }
-  static inline const std::set<std::string> &bang_memset_ops() {
-    static const std::set<std::string> ret{
-        "__nramset", "__gdramset", "__ldramset"
+  static inline const std::map<std::string, std::string> &scope_map() {
+    static const std::map<std::string, std::string> res = {
+        {"global", "gdram"},
+        {"local", "nram"},
+        {"local.wram", "wram"},
     };
-    return ret;
+    return res;
   }
 
   bool is_src_expr_{false};
   int src_expr_depth_{0};
   bool already_stored_{false};
   std::string dst_buff_;
-  std::string dst_scope_;
 
+  std::string dst_scope_;
   bool already_gen_kernel_{false};
   bool no_sync_point_{false};
+
   std::array<int, 3> task_dim_{0, 0, 0};
 
   struct {
@@ -130,7 +135,6 @@ private:
     int max_size_{};
     std::vector<int> scope_{};
   } nram_tmp_buf_{};
-
   inline void GenNRAMTmpBuf(const std::string &type,
                             const std::string &buf, int bytes) {
     fmt::print(GenStmt(),
@@ -148,14 +152,16 @@ private:
     return os.str();
   }
   inline std::string MoveDir(const std::string &from_scope, const std::string &to_scope) {
-    auto get_scope = [](const std::string &scope) -> std::string {
-      if (scope == "global") {
-        return "GDRAM";
-      } else {
-        return "NRAM";
-      }
+    auto to_upper = [](std::string s) -> std::string {
+      std::for_each(s.begin(), s.end(), [](char &c) { c = std::toupper(c); });
+      return s;
     };
-    return get_scope(from_scope) + "2" + get_scope(to_scope);
+    return to_upper(scope_map().at(from_scope)) + "2" + to_upper(scope_map().at(to_scope));
+  }
+  inline std::string ScopeAbbrev(const std::string &scope) {
+    if (scope_map().count(scope) == 0)
+      LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
+    return scope_map().at(scope);
   }
 };
 

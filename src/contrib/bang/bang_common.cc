@@ -27,7 +27,7 @@ void *bangLoadModuleFromMem(const char *src, size_t len) {
     close(fd);
 
     char cmd[256];
-    sprintf(cmd, "cncc -x bang --bang-mlu-arch=MLU270 -std=c++1z -O3 -c %s -o %s && "
+    sprintf(cmd, "cncc -x bang --bang-mlu-arch=MLU270 --bang-device-only -std=c++1z -O3 -c %s -o %s && "
                  "clang++ -shared %s -o %s",
             tmp_src, tmp_obj, tmp_obj, tmp_lib);
     system(cmd) CK;

@@ -66,11 +66,11 @@ protected:
     n->condition = op->condition;
     if (split_then) {
       n->then_case = std::move(then_case);
-      n->else_case = AttrStmtNode::make({}, attr::thread_loop, {}, else_case);
+      n->else_case = AttrStmt({}, attr::thread_loop, {}, else_case);
       keep_splitting_ = true;
     } else if (split_else) {
       n->else_case = std::move(else_case);
-      n->then_case = AttrStmtNode::make({}, attr::thread_loop, {}, then_case);
+      n->then_case = AttrStmt({}, attr::thread_loop, {}, then_case);
       keep_splitting_ = true;
     } else {
       n->then_case = std::move(then_case);
@@ -95,10 +95,10 @@ protected:
       for (size_t i = split_pos + 1; i < seq.size(); ++i)
         after.push_back(seq[i]);
       if (!before.empty())
-        all.push_back(AttrStmtNode::make({}, attr::thread_loop, {}, SeqStmt(before)));
+        all.push_back(AttrStmt({}, attr::thread_loop, {}, SeqStmt(before)));
       all.push_back(seq[split_pos]);
       if (!after.empty())
-        all.push_back(AttrStmtNode::make({}, attr::thread_loop, {}, SeqStmt(after)));
+        all.push_back(AttrStmt({}, attr::thread_loop, {}, SeqStmt(after)));
       keep_splitting_ = true;
       return SeqStmt(all);
     } else {
@@ -123,8 +123,8 @@ Stmt ModifyParallelModel(const Stmt &stmt) {
   ThreadLoopMutator tlm;
   auto sync_points = spd.DetectSyncPoints(stmt);
   if (sync_points.empty()) {
-    return AttrStmtNode::make({}, attr::thread_loop,
-                              StringImmNode::make("no_sync_point"), stmt);
+    return AttrStmt({}, attr::thread_loop,
+                    StringImm("no_sync_point"), stmt);
   } else {
     auto res = stmt;
     for (const auto &sp: sync_points) {

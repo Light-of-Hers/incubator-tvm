@@ -54,7 +54,8 @@ class StorageAccessInfoLower : public StmtExprMutator {
       if (info->head_address.defined()) {
         return LetStmt(op->buffer_var, info->head_address, op->body);
       } else {
-        return op->body;
+//        return op->body;
+        return stmt;
       }
     } else {
       return stmt;
@@ -109,7 +110,7 @@ class StorageAccessInfoLower : public StmtExprMutator {
   PrimExpr MakeTaggedAccessPtr(DataType ptr_type, Var buffer_var, DataType dtype, PrimExpr offset,
                                const MemoryInfo& info) {
     if (ptr_type.is_handle()) {
-      CHECK(info->head_address.defined()) << buffer_var << " is not adddressable.";
+//      CHECK(info->head_address.defined()) << buffer_var << " is not adddressable.";
       return AddressOffset(buffer_var, dtype, offset);
     }
     int dtype_bits = dtype.bits() * dtype.lanes();

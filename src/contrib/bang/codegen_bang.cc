@@ -3,7 +3,6 @@
 //
 
 #include "codegen_bang.h"
-#include "../../arith/compute_expr.h"
 #include "./modify_parallel_model.h"
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/expr_functor.h>
@@ -32,15 +31,17 @@ std::string CodeGenBANG::Finish() {
       << "#define DECL_MEMSET_OP(name, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *ptr, T val) "
-      << "{ if constexpr (VecN > 0) name (ptr, VecN, val); for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
-  for (const auto &on : bang_memset_ops()) {
-    fmt::print(decl_stream, "DECL_MEMSET_OP({}, 64)\n", on);
+      << "{ if constexpr (VecN > 0) name (ptr, VecN, val); "
+         "if constexpr (VecN < TotN) for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
+  for (const auto &on : scope_map()) {
+    fmt::print(decl_stream, "DECL_MEMSET_OP(_{}set, 64)\n", on.second);
   }
   decl_stream
       << "#define DECL_STRM_BIN_OP(name, op, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src0, T *src1) "
-      << "{ if constexpr (VecN > 0) name (dst, src0, src1, VecN); for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
+      << "{ if constexpr (VecN > 0) name (dst, src0, src1, VecN); "
+         "if constexpr (VecN < TotN) for (int i = VecN; i < TotN; ++i) dst[i] = src0[i] op src1[i]; }\n";
   for (const auto &on : bang_stream_binary_ops()) {
     fmt::print(decl_stream, "DECL_STRM_BIN_OP({}, {}, 64)\n",
                on.second, on.first);
@@ -49,7 +50,8 @@ std::string CodeGenBANG::Finish() {
       << "#define DECL_STRM_BIN_CONST_OP(name, op, align) "
       << "template <typename T, int TotN, int VecN = ALIGN_DN(TotN, align)> "
       << "__mlu_func__ void name ## _ (T *dst, T *src, T val) "
-      << "{ if constexpr (VecN > 0) name (dst, src, val, VecN) ; for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
+      << "{ if constexpr (VecN > 0) name (dst, src, val, VecN); "
+         "if constexpr (VecN < TotN) for (int i = VecN; i < TotN; ++i) dst[i] = src[i] op val; }\n";
   for (const auto &on : bang_stream_binary_const_ops()) {
     fmt::print(decl_stream, "DECL_STRM_BIN_CONST_OP({}, {}, 64)\n",
                on.second, on.first);
@@ -112,7 +114,7 @@ void CodeGenBANG::PrintStorageScope(const std::string &scope, std::ostream &os) 
 void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
                                    PrimExpr lhs, PrimExpr rhs, std::ostream &os) {
   auto is_src_expr_root = is_src_expr_ && src_expr_depth_ == 1;
-  auto directly_store = is_src_expr_root && dst_scope_ != "global";
+  auto directly_store = is_src_expr_root && dst_scope_ == "local";
   auto type = Type2String(t.element_of());
   int lanes = t.lanes();
   int bytes = t.lanes() * t.bytes();
@@ -180,7 +182,7 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   std::string dst, builtin;
   if (is_src_expr_root) {
     already_stored_ = true;
-    builtin = dst_scope_ == "global" ? "__gdramset" : "__nramset";
+    builtin = fmt::format("_{}set", scope_map().at(dst_scope_));
     dst = dst_buff_;
   } else {
     builtin = "__nramset";
@@ -232,7 +234,7 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
       auto type = Type2String(op->dtype.element_of());
       if (is_src_expr_root) {
         fmt::print(os, "__memcpy({}, {}, sizeof({}) * {}, {})",
-                   dst_buff_, ref, type, lanes, MoveDir(scope, dst_scope_));
+                   dst_buff_, ref, type, ramp->lanes, MoveDir(scope, dst_scope_));
         already_stored_ = true;
       } else {
         if (scope != "global") {
@@ -242,7 +244,7 @@ void CodeGenBANG::VisitExpr_(const LoadNode *op, std::ostream &os) {
           int bytes = op->dtype.bytes() * lanes;
           GenNRAMTmpBuf(type, tmp_vid, bytes);
           fmt::print(os, "(__memcpy({}, {}, sizeof({}) * {}, {}), {})",
-                     tmp_vid, ref, type, lanes, MoveDir(scope, "local"), tmp_vid);
+                     tmp_vid, ref, type, ramp->lanes, MoveDir(scope, "local"), tmp_vid);
         }
       }
     } else {
@@ -280,7 +282,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
       } else {
         auto type = Type2String(op->value.dtype().element_of());
         fmt::print(GenStmt(), "__memcpy({}, {}, sizeof({}) * {}, {});\n",
-                   dst_buff_, src, type, lanes, MoveDir("local", scope));
+                   dst_buff_, src, type, ramp->lanes, MoveDir("local", scope));
       }
       EndScope(mark);
       nram_tmp_buf_.leave_scope();
@@ -295,11 +297,13 @@ std::string CodeGenBANG::GetBufferRef(DataType t, const VarNode *buffer, PrimExp
   if (lanes == 1) {
     return CodeGenC::GetBufferRef(t, buffer, index);
   } else {
-    std::ostringstream os;
+    std::cout << t << std::endl;
     auto buf_vid = GetVarID(buffer);
     auto type = Type2String(t.element_of());
-    os << "((" << type << " *)" << buf_vid << " + (" << PrintExpr(index) << "))";
-    return os.str();
+    auto s = fmt::format("(({} *){} + {})", type, buf_vid, PrintExpr(index));
+    std::cout << s << std::endl;
+    std::cout << CodeGenC::GetBufferRef(t, buffer, index) << std::endl;
+    return s;
   }
 }
 void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
@@ -310,18 +314,21 @@ void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
     << "Can only handle constant size stack allocation for now";
   auto type = Type2String(op->dtype);
   auto scope = alloc_storage_scope_.at(op->buffer_var.get());
+  CHECK_NE(scope, "global");
   if (no_sync_point_) {
-    CHECK_NE(scope, "global");
-    fmt::print(GenStmt(), "__nram__ {} {}[{}];\n", type, vid, constant_size);
+    fmt::print(GenStmt(), "__{}__ {} {}[{}];\n", ScopeAbbrev(scope), type, vid, constant_size);
   } else {
     if (scope == "shared") {
       fmt::print(GenStmt(), "__nram__ {} {}[{}];\n", type, vid, constant_size);
-    } else if (scope == "local") {
-      auto mem_vid = GetUniqueName(vid + "_mem");
-      fmt::print(GenStmt(), "__nram__ {} {}[N_THREAD * {}];\n", type, mem_vid, constant_size);
-      fmt::print(GenStmt(), "#define {} ({} + THREAD_IDX * {})\n", vid, mem_vid, constant_size);
     } else {
-      LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
+      auto mem_vid = GetUniqueName(vid + "_mem");
+      fmt::print(GenStmt(),
+                 "__{}__ {} {}[N_THREAD * {}];\n",
+                 ScopeAbbrev(scope),
+                 type,
+                 mem_vid,
+                 constant_size);
+      fmt::print(GenStmt(), "#define {} ({} + THREAD_IDX * {})\n", vid, mem_vid, constant_size);
     }
   }
   RegisterHandleType(op->buffer_var.get(), op->dtype);
