@@ -80,6 +80,7 @@ Here is another example to match an op with a specific attribute:
         y = relay.var('y')
         assert not is_conv2d.match(relay.op.nn.conv2d(x, y))
 
+
 Matching an Optional Op
 ***********************
 
@@ -102,6 +103,36 @@ we can match the graph of conv2d+bias_add+relu or the graph of conv2d+bias_add.
         relu = relay.op.nn.relu(bias)
         assert pat.match(relu)
 
+
+Matching Types
+**************
+
+In addition to matching ops with attributes, we can also make a pattern to match their types, in interms of the shape and data type. Here are some examples:
+
+.. code-block:: python
+
+    def test_match_type():
+        # Match any op with float32
+        pat1 = has_dtype('float32')
+        x = relay.var('x', shape=(10, 10), dtype='float32')
+        assert pat1.match(x)
+
+        # Match any op with shape (10, 10)
+        pat2 = has_shape((10, 10))
+        x = relay.var('x', shape=(10, 10), dtype='float32')
+        assert pat2.match(x)
+
+        # Match conv2d+relu with a certain shape
+        conv2d = is_op('nn.conv2d')(wildcard(), wildcard())
+        pat3 = is_op('nn.relu')(conv2d).has_shape((1, 32, 28, 28))
+
+        x = relay.var('x', shape=(1, 3, 28, 28), dtype='float32')
+        w = relay.var('w', shape=(32, 3, 3, 3), dtype='float32')
+        conv2d = relay.nn.conv2d(x, w, strides=(1, 1), padding=(1, 1))
+        relu = relay.nn.relu(conv2d)
+        assert pat3.match(relu)
+
+
 Matching Non-Call Nodes
 ***********************
 
@@ -114,7 +145,7 @@ Since there are not call nodes, we need to use specific pattern nodes to match t
         x = relay.var('x')
         y = relay.var('y')
         z = relay.var('z')
-        tuple_pattern = TuplePattern((wildcard(), wildcard(), wildcard()))
+        tuple_pattern = is_tuple((wildcard(), wildcard(), wildcard()))
         assert tuple_pattern.match(relay.expr.Tuple((x,y,z)))
 
 The next example is matching a pattern of batch_norm -> get(0) -> relu:
@@ -123,7 +154,7 @@ The next example is matching a pattern of batch_norm -> get(0) -> relu:
 
     def test_match_tuple_get_item():
         bn_node = is_op('nn.batch_norm')(wildcard(), wildcard(), wildcard(), wildcard(), wildcard())
-        tuple_get_item_node = TupleGetItemPattern(bn_node, 0)
+        tuple_get_item_node = is_tuple_get_item(bn_node, 0)
         pat = is_op('nn.relu')(tuple_get_item_node)
 
         x = relay.var('x', shape=(1, 8))
@@ -142,7 +173,7 @@ if a specific parameter in a subgraph has been bound or not.
 .. code-block:: python
 
     def test_match_constant():
-        conv2d = is_op('nn.conv2d')(wildcard(), ConstantPattern())
+        conv2d = is_op('nn.conv2d')(wildcard(), is_constant())
         pattern = is_op('nn.bias_add')(conv2d, wildcard())
 
         x = relay.var('x', shape=(1, 3, 224, 224))
@@ -162,12 +193,12 @@ if a specific parameter in a subgraph has been bound or not.
         assert pattern.match(mod['main'].body)
 
 On the other hand, if you need to match the constant with a specific value, you can directly
-use ``ExprPattern``. This could be useful for algebraic simplify.
+use ``is_expr``. This could be useful for algebraic simplify.
 
 .. code-block:: python
 
     def test_match_plus_zero():
-        zero = (ExprPattern(relay.const(0)) | ExprPattern(relay.const(0.0)))
+        zero = (is_expr(relay.const(0)) | is_expr(relay.const(0.0)))
         pattern = wildcard() + zero
         
         x = relay.Var('x')
@@ -186,6 +217,7 @@ The next example is matching function nodes with a specific attribute:
         f = relay.Function([x, y], x + y).with_attr("Composite", "add")
         assert pattern.match(f)
 
+
 Matching Diamonds and Post-Dominator Graphs
 *******************************************
 
@@ -193,7 +225,7 @@ The next example is matching a diamond with two inputs at the top of the diamond
 
     def test_match_diamond():
         # Pattern
-        is_conv2d = is_op('nn.conv2d')(is_input(), is_input())
+        is_conv2d = is_op('nn.conv2d')(is_var(), is_var())
         path1 = is_op('nn.relu')(is_conv2d)
         path2 = is_op('nn.leaky_relu')(is_conv2d)
         diamond = is_op('add')(path1, path2)
@@ -213,7 +245,7 @@ The final example is matching diamonds with a post-dominator relationship. We em
 
     def test_match_dom_diamond():
         # Pattern
-        is_conv2d = is_op('nn.conv2d')(is_input(), is_input())
+        is_conv2d = is_op('nn.conv2d')(is_var(), is_var())
         reduction = is_op('add')(wildcard(), wildcard())
         diamond = dominates(is_conv2d, is_elemwise, reduction)
 
@@ -228,6 +260,7 @@ The final example is matching diamonds with a post-dominator relationship. We em
         # Check
         assert diamond.match(out)
 
+
 Pattern Language Design
 =======================
 
@@ -238,9 +271,16 @@ The high level design is to introduce a language of patterns for now we propose 
     Pattern ::= expr
             | *
             | pattern(pattern1, ... patternN)
-            | has_type(pattern, type)
-            | has_attr(pattern, attrs)
-            | is_input(name)
+            | has_type(type)
+            | has_dtype(type)
+            | has_shape(shape)
+            | has_attr(attrs)
+            | is_var(name)
+            | is_constant()
+            | is_expr(expr)
+            | is_op(op_name)
+            | is_tuple()
+            | is_tuple_get_item()
             | pattern1 `|` pattern2
             | dominates(parent_pattern, path_pattern, child_pattern)
 
@@ -260,6 +300,16 @@ Type Pattern
 ************
 
 Check that the expression matched by the nested pattern has a particular type.
+
+DType Pattern
+*************
+
+Check that the expression matched by the nested pattern has a particular data type.
+
+Shape Pattern
+*************
+
+Check that the expression matched by the nested pattern has a particular output shape.
 
 Attribute Pattern
 *****************

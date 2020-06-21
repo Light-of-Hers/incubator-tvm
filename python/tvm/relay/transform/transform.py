@@ -21,6 +21,7 @@ Relay pass transformation infrastructure.
 import types
 import inspect
 import functools
+import warnings
 
 import tvm.ir
 from tvm import te
@@ -34,7 +35,9 @@ def build_config(opt_level=2,
                  required_pass=None,
                  disabled_pass=None,
                  trace=None):
-    """Configure the build behavior by setting config variables.
+    """Configure the build behavior by setting config variables. This function
+    will be deprecated in TVM v0.7. Instead, we should directly use
+    tvm.transform.PassContext.
 
     Parameters
     ----------
@@ -55,6 +58,7 @@ def build_config(opt_level=2,
                 "EliminateCommonSubexpr": 3,
                 "CombineParallelConv2D": 4,
                 "CombineParallelDense": 4,
+                "CombineParallelBatchMatmul": 4,
                 "FastMath": 4
             }
 
@@ -72,8 +76,9 @@ def build_config(opt_level=2,
     pass_context: PassContext
         The pass context for optimizations.
     """
-    return tvm.ir.transform.PassContext(opt_level, required_pass,
-                                        disabled_pass, trace)
+    warnings.warn("relay.build_config will be deprecated. Please use \
+                  tvm.transform.PassContext directly", DeprecationWarning)
+    return tvm.transform.PassContext(opt_level, required_pass, disabled_pass, trace)
 
 
 @tvm._ffi.register_object("relay.FunctionPass")
@@ -302,6 +307,39 @@ def CombineParallelDense(min_num_branches=3):
         The registered pass that combines parallel dense operators.
     """
     return _ffi_api.CombineParallelDense(min_num_branches)
+
+def CombineParallelBatchMatmul(min_num_branches=3):
+    """Combine multiple batch matmul operators into one. For example:
+
+    .. code-block
+                             data (1, 2, 3)
+                         /                  \
+        batch_matmul(data, (1, 4, 3))    batch_matmul(data, (1, 5, 3))
+            |                                |
+        elemwise/bcast (1, 2, 4)         elemwise/bcast (1, 2, 5)
+
+    Would become:
+
+    .. code-block
+
+                data (1, 2, 3)
+                |
+            batch_matmul(data, (1, 4+5, 3))
+                |
+            elemwise/bcast (1 ,2, 4+5)
+
+    Parameters
+    ----------
+    min_num_branches : int
+        The minimum number of required parallel branches for performing this
+        optimization.
+
+    Returns
+    -------
+    ret: tvm.transform.Pass
+        The registered pass that combines parallel dense operators.
+    """
+    return _ffi_api.CombineParallelBatchMatmul(min_num_branches)
 
 
 def AlterOpLayout():

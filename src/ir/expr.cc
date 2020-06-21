@@ -47,7 +47,7 @@ PrimExpr PrimExpr::FromObject_(ObjectRef ref) {
     return GetRef<te::Tensor>(ptr)();
   }
   if (auto* ptr = ref.as<runtime::StringObj>()) {
-    return tir::StringImmNode::make(GetRef<runtime::String>(ptr));
+    return tir::StringImm(GetRef<runtime::String>(ptr));
   }
   CHECK(ObjectTypeChecker<PrimExpr>::Check(ref.get()))
       << "Expect type " << ObjectTypeChecker<PrimExpr>::TypeName() << " but get "
@@ -57,7 +57,7 @@ PrimExpr PrimExpr::FromObject_(ObjectRef ref) {
 
 IntImm::IntImm(DataType dtype, int64_t value) {
   CHECK(dtype.is_scalar()) << "ValueError: IntImm can only take scalar.";
-  CHECK(dtype.is_int() || dtype.is_uint()) << "ValueError: IntImm can only take scalar.";
+  CHECK(dtype.is_int() || dtype.is_uint()) << "ValueError: IntImm supports only int or uint type.";
   if (dtype.is_uint()) {
     CHECK_GE(value, 0U);
   }
@@ -171,28 +171,25 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<MapNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const MapNode*>(node.get());
       p->stream << '{';
-      for (auto it = op->data.begin(); it != op->data.end(); ++it) {
-        if (it != op->data.begin()) {
+      for (auto it = op->begin(); it != op->end(); ++it) {
+        if (it != op->begin()) {
           p->stream << ", ";
         }
-        p->Print(it->first);
-        p->stream << ": ";
+        if (it->first->IsInstance<StringObj>()) {
+          p->stream << '\"' << Downcast<String>(it->first) << "\": ";
+        } else {
+          p->Print(it->first);
+          p->stream << ": ";
+        }
         p->Print(it->second);
       }
       p->stream << '}';
     });
 
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<StrMapNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const StrMapNode*>(node.get());
-      p->stream << '{';
-      for (auto it = op->data.begin(); it != op->data.end(); ++it) {
-        if (it != op->data.begin()) {
-          p->stream << ", ";
-        }
-        p->stream << '\"' << it->first << "\": ";
-        p->Print(it->second);
-      }
-      p->stream << '}';
-    });
+TVM_REGISTER_GLOBAL("ir.DebugPrint").set_body_typed([](ObjectRef ref) {
+  std::stringstream ss;
+  ss << ref;
+  return ss.str();
+});
+
 }  // namespace tvm

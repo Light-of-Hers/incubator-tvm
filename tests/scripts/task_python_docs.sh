@@ -21,6 +21,10 @@ set -u
 
 source tests/scripts/setup-pytest-env.sh
 
+# to avoid CI CPU thread throttling.
+export TVM_BIND_THREADS=0
+export OMP_NUM_THREADS=4
+
 cleanup()
 {
     rm -rf /tmp/$$.log.txt
@@ -43,10 +47,9 @@ find . -type f -path "*.pyc" | xargs rm -f
 make cython3
 
 cd docs
-PYTHONPATH=`pwd`/../python make html 2>/tmp/$$.log.txt
+PYTHONPATH=`pwd`/../python make html |& tee /tmp/$$.log.txt
 if grep -E "failed to execute" < /tmp/$$.log.txt; then
     echo "Some of sphinx-gallery item example failed to execute."
-    cat /tmp/$$.log.txt
     exit 1
 fi
 cd ..
@@ -78,3 +81,5 @@ echo "Start creating the docs tarball.."
 tar -C _docs -czf docs.tgz .
 echo "Finish creating the docs tarball"
 du -h docs.tgz
+
+echo "Finish everything"

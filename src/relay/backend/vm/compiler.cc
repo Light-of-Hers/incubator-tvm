@@ -41,6 +41,7 @@
 #include <tuple>
 #include <vector>
 
+#include "../../../target/source/codegen_source_base.h"
 #include "../../backend/compile_engine.h"
 #include "../../op/op_common.h"
 #include "../../transforms/pass_util.h"
@@ -726,13 +727,13 @@ class VMFunctionCompiler : ExprFunctor<void(const Expr& expr)> {
 
  protected:
   /*! \brief Store the expression a variable points to. */
-  std::unordered_map<Var, Expr, ObjectHash, ObjectEqual> expr_map_;
+  std::unordered_map<Var, Expr, ObjectPtrHash, ObjectPtrEqual> expr_map_;
   /*! \brief Instructions in the VMFunction. */
   std::vector<Instruction> instructions_;
   /*! \brief Parameter names of the function. */
   std::vector<std::string> params_;
   /*! \brief Map from var to register number. */
-  std::unordered_map<Var, RegName, ObjectHash, ObjectEqual> var_register_map_;
+  std::unordered_map<Var, RegName, ObjectPtrHash, ObjectPtrEqual> var_register_map_;
   /*! \brief Last used register number. */
   size_t last_register_;
   /*! \brief Total number of virtual registers allocated. */
@@ -764,14 +765,14 @@ PackedFunc VMCompiler::GetFunction(const std::string& name, const ObjectPtr<Obje
         [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = runtime::Module(exec_); });
   } else if (name == "set_params") {
     return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-      Map<std::string, Constant> params = args[0];
+      Map<String, Constant> params = args[0];
       for (const auto& kv : params) {
         this->SetParam(kv.first, kv.second->data);
       }
     });
   } else if (name == "get_params") {
     return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-      Map<std::string, Constant> ret;
+      Map<String, Constant> ret;
       for (const auto& kv : params_) {
         ret.Set(kv.first, Constant(kv.second));
       }
@@ -996,6 +997,10 @@ void VMCompiler::Codegen() {
     mod.CopyOnWrite();
 
     if (target_str == "ext_dev") {
+      // Collect metadata in functions that are handled by external codegen.
+      CHECK(mod->ContainGlobalVar(cfunc->func_name));
+      backend::ConstantUpdater const_visit(cfunc->func_name, &params_);
+      const_visit(Downcast<Function>(mod->Lookup(cfunc->func_name)));
       continue;
     } else if (funcs.count(target_str) == 0) {
       funcs.emplace(target_str, mod);
@@ -1006,25 +1011,20 @@ void VMCompiler::Codegen() {
 
   auto compile_engine = CompileEngine::Global();
   auto ext_mods = compile_engine->LowerExternalFunctions();
-  runtime::Module mod;
   if (funcs.size() > 0) {
-    mod = tvm::build(funcs, target_host_);
-    CHECK(mod.operator->());
+    Map<String, IRModule> build_funcs;
+    for (const auto& i : funcs) {
+      build_funcs.Set(i.first, i.second);
+    }
+    exec_->lib = tvm::build(build_funcs, target_host_);
   } else {
-    CHECK_EQ(ext_mods.size(), 1U)
-        << "Expect to have a TVM DSOModule when multiple runtime modules exist";
+    // There is no function handled by TVM. We create a virtual master module
+    // to make sure a DSO module will be also available.
+    exec_->lib = codegen::CSourceModuleCreate(";", "");
   }
   if (!ext_mods.empty()) {
-    if (funcs.size() == 0) {
-      mod = ext_mods[0];
-    } else {
-      // Import all external runtime modules.
-      for (auto it : ext_mods) {
-        mod.Import(it);
-      }
-    }
+    exec_->lib = codegen::CreateMetadataModule(params_, exec_->lib, ext_mods);
   }
-  exec_->lib = mod;
 }
 
 runtime::Module CreateVMCompiler() {

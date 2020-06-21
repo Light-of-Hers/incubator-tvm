@@ -88,8 +88,8 @@ tir::Buffer BufferWithOffsetAlignment(Array<PrimExpr> shape, DataType dtype, std
     elem_offset = PrimExpr();
   }
 
-  return tir::BufferNode::make(data, dtype, shape, Array<PrimExpr>(), elem_offset, name, "",
-                               data_alignment, offset_factor, buffer_type);
+  return tir::Buffer(data, dtype, shape, Array<PrimExpr>(), elem_offset, name, "", data_alignment,
+                     offset_factor, buffer_type);
 }
 
 void GetBinds(const Array<te::Tensor>& args, bool compact,
@@ -162,6 +162,7 @@ IRModule lower(te::Schedule sch, const Array<te::Tensor>& args, const std::strin
   pass_list.push_back(tir::transform::InjectPrefetch());
   pass_list.push_back(tir::transform::StorageFlatten(64, instrument_bound_checkers));
   // Phase 1
+  pass_list.push_back(tir::transform::BF16Legalize());
   pass_list.push_back(tir::transform::NarrowDataType(32));
   pass_list.push_back(tir::transform::Simplify());
   pass_list.push_back(tir::transform::LoopPartition());
@@ -290,7 +291,7 @@ runtime::Module build(const Map<Target, IRModule>& inputs, const Target& target_
 }
 
 // Build for heterogeneous execution when target is a string.
-runtime::Module build(const Map<std::string, IRModule>& inputs, const Target& target_host) {
+runtime::Module build(const Map<String, IRModule>& inputs, const Target& target_host) {
   Map<Target, IRModule> updated_input;
   for (const auto& it : inputs) {
     auto target = Target::Create(it.first);
