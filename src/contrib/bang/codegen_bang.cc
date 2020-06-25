@@ -297,13 +297,9 @@ std::string CodeGenBANG::GetBufferRef(DataType t, const VarNode *buffer, PrimExp
   if (lanes == 1) {
     return CodeGenC::GetBufferRef(t, buffer, index);
   } else {
-    std::cout << t << std::endl;
     auto buf_vid = GetVarID(buffer);
     auto type = Type2String(t.element_of());
-    auto s = fmt::format("(({} *){} + {})", type, buf_vid, PrintExpr(index));
-    std::cout << s << std::endl;
-    std::cout << CodeGenC::GetBufferRef(t, buffer, index) << std::endl;
-    return s;
+    return fmt::format("(({} *){} + {})", type, buf_vid, PrintExpr(index));
   }
 }
 void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
