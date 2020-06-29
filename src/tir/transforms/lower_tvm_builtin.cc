@@ -191,7 +191,7 @@ class BuiltinLower : public StmtExprMutator {
     prep_seq_.emplace_back(TVMStructSet(stack_array_, idx, intrinsic::kArrTypeBits,
                                         make_const(DataType::UInt(8), dtype.bits())));
     prep_seq_.emplace_back(TVMStructSet(stack_array_, idx, intrinsic::kArrTypeLanes,
-                                        make_const(DataType::UInt(16), dtype.lanes())));
+                                        make_const(DataType::Int(32), dtype.lanes()))); // CRZ
     // set byte offset
     int data_bytes = GetVectorBytes(dtype);
     PrimExpr byte_offset = op->args[5];

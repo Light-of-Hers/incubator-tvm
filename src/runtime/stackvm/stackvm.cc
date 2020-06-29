@@ -529,7 +529,7 @@ void StackVM::Run(State* s) const {
             break;
           }
           case StackVM::kArrTypeLanes: {
-            arr[index].dtype.lanes = static_cast<uint16_t>(stack[sp].v_int64);
+            arr[index].dtype.lanes = static_cast<int32_t>(stack[sp].v_int64); // CRZ
             break;
           }
           case StackVM::kArrByteOffset: {

@@ -44,7 +44,7 @@ cdef extern from "tvm/runtime/c_runtime_api.h":
     ctypedef struct DLDataType:
         uint8_t code
         uint8_t bits
-        int32_t lanes
+        int32_t lanes # CRZ
 
     ctypedef struct DLContext:
         int device_type

@@ -34,7 +34,7 @@ std::string CodeGenBANG::Finish() {
       << "{ if constexpr (VecN > 0) name (ptr, VecN, val); "
          "if constexpr (VecN < TotN) for (int i = VecN; i < TotN; ++i) ptr[i] = val; }\n";
   for (const auto &on : scope_map()) {
-    fmt::print(decl_stream, "DECL_MEMSET_OP(_{}set, 64)\n", on.second);
+    fmt::print(decl_stream, "DECL_MEMSET_OP(__{}set, 64)\n", on.second);
   }
   decl_stream
       << "#define DECL_STRM_BIN_OP(name, op, align) "
@@ -182,7 +182,7 @@ void CodeGenBANG::VisitExpr_(const BroadcastNode *op, std::ostream &os) {
   std::string dst, builtin;
   if (is_src_expr_root) {
     already_stored_ = true;
-    builtin = fmt::format("_{}set", scope_map().at(dst_scope_));
+    builtin = fmt::format("__{}set", scope_map().at(dst_scope_));
     dst = dst_buff_;
   } else {
     builtin = "__nramset";

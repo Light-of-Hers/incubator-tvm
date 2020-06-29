@@ -43,7 +43,7 @@ struct Handler<DLDataType> {
   inline static bool Read(Stream* strm, DLDataType* dtype) {
     if (!Handler<uint8_t>::Read(strm, &(dtype->code))) return false;
     if (!Handler<uint8_t>::Read(strm, &(dtype->bits))) return false;
-    if (!Handler<int32_t>::Read(strm, &(dtype->lanes))) return false;
+    if (!Handler<int32_t>::Read(strm, &(dtype->lanes))) return false; // CRZ
     return true;
   }
 };
