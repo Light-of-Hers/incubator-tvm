@@ -42,8 +42,8 @@ cdef enum TVMArgTypeCode:
 
 cdef extern from "tvm/runtime/c_runtime_api.h":
     ctypedef struct DLDataType:
-        uint8_t code
-        uint8_t bits
+        uint16_t code
+        uint16_t bits
         int32_t lanes # CRZ
 
     ctypedef struct DLContext:

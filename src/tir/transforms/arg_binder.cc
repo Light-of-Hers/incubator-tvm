@@ -162,10 +162,10 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
   DataType dtype = buffer->dtype;
   std::ostringstream type_err_msg;
   type_err_msg << arg_name << ".dtype is expected to be " << dtype;
-  PrimExpr cond = (TVMArrayGet(DataType::UInt(8), handle, intrinsic::kArrTypeCode) ==
-                       IntImm(DataType::UInt(8), dtype.code()) &&
-                   TVMArrayGet(DataType::UInt(8), handle, intrinsic::kArrTypeBits) ==
-                       IntImm(DataType::UInt(8), dtype.bits()) &&
+  PrimExpr cond = (TVMArrayGet(DataType::UInt(16), handle, intrinsic::kArrTypeCode) ==
+                       IntImm(DataType::UInt(16), dtype.code()) &&
+                   TVMArrayGet(DataType::UInt(16), handle, intrinsic::kArrTypeBits) ==
+                       IntImm(DataType::UInt(16), dtype.bits()) &&
                    TVMArrayGet(DataType::Int(32), handle, intrinsic::kArrTypeLanes) ==
                        IntImm(DataType::Int(32), dtype.lanes())); // CRZ
   if (!(dtype == DataType::Int(4) || dtype == DataType::UInt(4) || dtype == DataType::Int(1))) {

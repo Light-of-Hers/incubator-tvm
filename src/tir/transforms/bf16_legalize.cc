@@ -225,8 +225,8 @@ class BF16LowerRewriter : StmtExprMutator {
     Stmt node_holder;
     const AllocateNode* newop;
     if (op->dtype.is_bfloat16()) {
-      auto v = Allocate(op->buffer_var, DataType::UInt(16, op->dtype.lanes()), op->extents,
-                        op->condition, op->body);
+      auto v = Allocate(op->buffer_var, DataType::Int(32, op->dtype.lanes()), op->extents,
+                        op->condition, op->body); // CRZ
       node_holder = v;
       newop = static_cast<const AllocateNode*>(v.operator->());
     } else {
@@ -304,14 +304,14 @@ class BF16LowerRewriter : StmtExprMutator {
     if (index.same_as(op->index) && predicate.same_as(op->predicate) && !is_bf16) {
       return GetRef<PrimExpr>(op);
     } else {
-      return Load(is_bf16 ? DataType::UInt(16, op->dtype.lanes()) : op->dtype, op->buffer_var,
+      return Load(is_bf16 ? DataType::Int(32, op->dtype.lanes()) : op->dtype, op->buffer_var,
                   index, predicate);
     }
   }
 
   PrimExpr VisitExpr_(const FloatImmNode* op) final {
     if (op->dtype.is_bfloat16()) {
-      return IntImm(DataType::UInt(16, op->dtype.lanes()),
+      return IntImm(DataType::Int(32, op->dtype.lanes()),
                     RoundToNearestEven(static_cast<float>(op->value)));
     }
     return StmtExprMutator::VisitExpr_(op);
@@ -322,7 +322,7 @@ class BF16LowerRewriter : StmtExprMutator {
     for (auto& itr : op->buffer_map) {
       auto oldbuf = itr.second;
       if (oldbuf->dtype.is_bfloat16()) {
-        auto newbuf = Buffer(oldbuf->data, DataType::UInt(16, oldbuf->dtype.lanes()), oldbuf->shape,
+        auto newbuf = Buffer(oldbuf->data, DataType::Int(32, oldbuf->dtype.lanes()), oldbuf->shape,
                              oldbuf->strides, oldbuf->elem_offset, oldbuf->name, oldbuf->scope,
                              oldbuf->data_alignment, oldbuf->offset_factor, oldbuf->buffer_type);
         buffer_remap[oldbuf.operator->()] = newbuf;

@@ -221,8 +221,8 @@ struct RPCReference {
         case kTVMDataType: {
           channel->Write(value.v_type);
           // padding
-          int32_t padding = 0;
-          channel->template Write<int32_t>(padding);
+          // int32_t padding = 0;
+          // channel->template Write<int32_t>(padding); // CRZ
           break;
         }
         case kTVMContext: {
@@ -340,8 +340,8 @@ struct RPCReference {
         }
         case kTVMDataType: {
           channel->Read(&(value.v_type));
-          int32_t padding = 0;
-          channel->template Read<int32_t>(&padding);
+          // int32_t padding = 0;
+          // channel->template Read<int32_t>(&padding); // CRZ
           break;
         }
         case kTVMContext: {

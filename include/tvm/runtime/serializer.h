@@ -36,13 +36,13 @@ namespace serializer {
 template <>
 struct Handler<DLDataType> {
   inline static void Write(Stream* strm, const DLDataType& dtype) {
-    Handler<uint8_t>::Write(strm, dtype.code);
-    Handler<uint8_t>::Write(strm, dtype.bits);
-    Handler<uint16_t>::Write(strm, dtype.lanes);
+    Handler<uint16_t>::Write(strm, dtype.code);
+    Handler<uint16_t>::Write(strm, dtype.bits);
+    Handler<int32_t>::Write(strm, dtype.lanes); // CRZ
   }
   inline static bool Read(Stream* strm, DLDataType* dtype) {
-    if (!Handler<uint8_t>::Read(strm, &(dtype->code))) return false;
-    if (!Handler<uint8_t>::Read(strm, &(dtype->bits))) return false;
+    if (!Handler<uint16_t>::Read(strm, &(dtype->code))) return false;
+    if (!Handler<uint16_t>::Read(strm, &(dtype->bits))) return false;
     if (!Handler<int32_t>::Read(strm, &(dtype->lanes))) return false; // CRZ
     return true;
   }

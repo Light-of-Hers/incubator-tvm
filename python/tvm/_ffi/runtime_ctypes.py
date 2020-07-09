@@ -59,8 +59,8 @@ class DataTypeCode(object):
 
 class DataType(ctypes.Structure):
     """TVM datatype structure"""
-    _fields_ = [("type_code", ctypes.c_uint8),
-                ("bits", ctypes.c_uint8),
+    _fields_ = [("type_code", ctypes.c_uint16),
+                ("bits", ctypes.c_uint16),
                 ("lanes", ctypes.c_int32)] # CRZ
     CODE2STR = {
         DataTypeCode.INT : 'int',

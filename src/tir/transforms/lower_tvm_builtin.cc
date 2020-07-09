@@ -187,9 +187,9 @@ class BuiltinLower : public StmtExprMutator {
     DataType dtype = op->args[4].dtype();
     prep_seq_.emplace_back(
         TVMStructSet(stack_array_, idx, intrinsic::kArrTypeCode,
-                     make_const(DataType::UInt(8), static_cast<int>(dtype.code()))));
+                     make_const(DataType::UInt(16), static_cast<int>(dtype.code()))));
     prep_seq_.emplace_back(TVMStructSet(stack_array_, idx, intrinsic::kArrTypeBits,
-                                        make_const(DataType::UInt(8), dtype.bits())));
+                                        make_const(DataType::UInt(16), dtype.bits())));
     prep_seq_.emplace_back(TVMStructSet(stack_array_, idx, intrinsic::kArrTypeLanes,
                                         make_const(DataType::Int(32), dtype.lanes()))); // CRZ
     // set byte offset

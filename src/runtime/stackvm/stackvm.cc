@@ -521,11 +521,11 @@ void StackVM::Run(State* s) const {
             break;
           }
           case StackVM::kArrTypeCode: {
-            arr[index].dtype.code = static_cast<uint8_t>(stack[sp].v_int64);
+            arr[index].dtype.code = static_cast<uint16_t>(stack[sp].v_int64);
             break;
           }
           case StackVM::kArrTypeBits: {
-            arr[index].dtype.bits = static_cast<uint8_t>(stack[sp].v_int64);
+            arr[index].dtype.bits = static_cast<uint16_t>(stack[sp].v_int64);
             break;
           }
           case StackVM::kArrTypeLanes: {

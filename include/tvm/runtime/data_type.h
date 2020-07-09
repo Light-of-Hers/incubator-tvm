@@ -70,8 +70,8 @@ class DataType {
    * \param lanes The number of lanes.
    */
   DataType(int code, int bits, int lanes) {
-    data_.code = static_cast<uint8_t>(code);
-    data_.bits = static_cast<uint8_t>(bits);
+    data_.code = static_cast<uint16_t>(code);
+    data_.bits = static_cast<uint16_t>(bits);
     data_.lanes = static_cast<int32_t>(lanes); // CRZ
     if (code == kBFloat) {
       CHECK_EQ(bits, 16);
