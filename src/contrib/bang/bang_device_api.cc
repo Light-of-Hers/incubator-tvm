@@ -25,6 +25,11 @@ public:
   }
   void GetAttr(TVMContext ctx, DeviceAttrKind kind, TVMRetValue *rv) override {
     switch (kind) {
+    case kExist: {
+      cnrtDeviceInfo_t info;
+      *rv = cnrtGetDeviceInfo(&info, ctx.device_id) == CNRT_RET_SUCCESS;
+      return;
+    }
     case kComputeVersion: {
       static const char *versions[] = {
           "1H8", "1H16", "1H8MINI", "MLU100", "MLU270", "MLU220"
