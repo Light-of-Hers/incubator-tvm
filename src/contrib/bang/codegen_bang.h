@@ -165,6 +165,8 @@ private:
       LOG(FATAL) << "BANG kernel cannot support memory scope: " << scope;
     return scope_map().at(scope);
   }
+
+  std::vector<std::string> type_scope_{};
 };
 
 }

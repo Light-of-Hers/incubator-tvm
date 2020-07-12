@@ -140,6 +140,10 @@ void CodeGenBANG::PrintVecBinaryOp(const std::string &op, DataType t,
     os << ", " << dst << ")";
 }
 void CodeGenBANG::PrintType(DataType t, std::ostream &os) {
+  if (!type_scope_.empty()) {
+    os << type_scope_.back();
+    return;
+  }
   if (t.is_int() || t.is_uint()) {
     switch (t.bits()) {
     case 8:
@@ -371,10 +375,14 @@ void CodeGenBANG::VisitExpr_(const CallNode *op, std::ostream &os) {
   if ((op->call_type == CallNode::Extern
       || op->call_type == CallNode::PureExtern)
       && op->name == "__bang_update_with") {
-    auto type = Type2String(op->dtype);
-    auto lanes = op->dtype.lanes();
     auto bytes = op->dtype.bytes();
+    auto lanes = op->dtype.lanes();
+    auto type = Type2String(op->dtype);
+
+    type_scope_.push_back(type);
     auto dst_buf = PrintExpr(op->args[0]);
+    type_scope_.pop_back();
+
     auto acc_fun = op->args[1].as<StringImmNode>()->value;
     auto src_fun = op->args[2].as<StringImmNode>()->value;
     auto tmp_buf = GetUniqueName("tmp");
