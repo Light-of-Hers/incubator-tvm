@@ -11,6 +11,7 @@
 #include <sstream>
 #include <cstring>
 #include <dmlc/thread_local.h>
+#include <numeric>
 
 namespace tvm {
 namespace runtime {
@@ -204,6 +205,15 @@ TVM_REGISTER_GLOBAL("tvm.info.mem.local.wram")
   auto info = make_object<MemoryInfoNode>();
   info->unit_bits = 8;
   info->max_num_bits = 1024 * 1024 * 8;
+  info->max_simd_bits = 64 * 8;
+  return MemoryInfo(info);
+});
+
+TVM_REGISTER_GLOBAL("tvm.info.mem.local.ldram")
+.set_body_typed([]() {
+  auto info = make_object<MemoryInfoNode>();
+  info->unit_bits = 8;
+  info->max_num_bits = std::numeric_limits<int>::max();
   info->max_simd_bits = 64 * 8;
   return MemoryInfo(info);
 });

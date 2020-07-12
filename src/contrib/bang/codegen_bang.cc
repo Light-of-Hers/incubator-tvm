@@ -91,10 +91,6 @@ std::string CodeGenBANG::Finish() {
       << (used_par_var_.count("threadIdx.y") ? "threadIdx_y" : "0") << " * THREAD_DIM_Z + "
       << (used_par_var_.count("threadIdx.z") ? "threadIdx_z" : "0") << ")\n";
 
-  // declare vectorized store
-  decl_stream
-      << "#define VEC_STORE \n";
-
   // declare function pre-delcaration
   decl_stream
       << "#define PRE_DECL "
@@ -264,9 +260,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
     const auto *ramp = op->index.as<RampNode>();
     const auto *stride = ramp ? ramp->stride.as<IntImmNode>() : nullptr;
     if (stride && stride->value == 1) {
-      GenStmt() << "VEC_STORE {\n";
       nram_tmp_buf_.enter_scope();
-      auto mark = BeginScope();
       auto dst = GetBufferRef(dtype, op->buffer_var.get(), ramp->base);
       auto scope = alloc_storage_scope_.count(op->buffer_var.get()) ?
                    alloc_storage_scope_.at(op->buffer_var.get()) : "global";
@@ -284,9 +278,7 @@ void CodeGenBANG::VisitStmt_(const StoreNode *op) {
         fmt::print(GenStmt(), "__memcpy({}, {}, sizeof({}) * {}, {});\n",
                    dst_buff_, src, type, ramp->lanes, MoveDir("local", scope));
       }
-      EndScope(mark);
       nram_tmp_buf_.leave_scope();
-      GenStmt() << "}\n";
     } else {
       LOG(FATAL) << "not yet implemented";
     }
@@ -310,7 +302,6 @@ void CodeGenBANG::VisitStmt_(const AllocateNode *op) {
     << "Can only handle constant size stack allocation for now";
   auto type = Type2String(op->dtype);
   auto scope = alloc_storage_scope_.at(op->buffer_var.get());
-  CHECK_NE(scope, "global");
   if (no_sync_point_) {
     fmt::print(GenStmt(), "__{}__ {} {}[{}];\n", ScopeAbbrev(scope), type, vid, constant_size);
   } else {
@@ -375,6 +366,30 @@ void CodeGenBANG::VisitStmt_(const ForNode *op) {
 void CodeGenBANG::VisitExpr(const PrimExpr &n, std::ostream &os) {
   src_expr_depth_++;
   CodeGenC::VisitExpr(n, os);
+}
+void CodeGenBANG::VisitExpr_(const CallNode *op, std::ostream &os) {
+  if ((op->call_type == CallNode::Extern
+      || op->call_type == CallNode::PureExtern)
+      && op->name == "__bang_update_with") {
+    auto type = Type2String(op->dtype);
+    auto lanes = op->dtype.lanes();
+    auto bytes = op->dtype.bytes();
+    auto dst_buf = PrintExpr(op->args[0]);
+    auto acc_fun = op->args[1].as<StringImmNode>()->value;
+    auto src_fun = op->args[2].as<StringImmNode>()->value;
+    auto tmp_buf = GetUniqueName("tmp");
+    GenNRAMTmpBuf(type, tmp_buf, lanes * bytes);
+
+    os << "(" << src_fun << "(" << tmp_buf;
+    int n_args = op->args.size();
+    for (int i = 3; i < n_args; ++i)
+      os << ", " << PrintExpr(op->args[i]);
+    os << "), ";
+    fmt::print(os, "__bang_{}_<{}, {}>({}, {}, {}))",
+               acc_fun, type, lanes, dst_buf, dst_buf, tmp_buf);
+  } else {
+    CodeGenC::VisitExpr_(op, os);
+  }
 }
 
 }

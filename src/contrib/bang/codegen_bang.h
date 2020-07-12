@@ -45,6 +45,7 @@ public:
   void VisitStmt_(const ForNode *op) override;
   void VisitStmt_(const StoreNode *op) override;
   void VisitExpr_(const LoadNode *op, std::ostream &os) override;
+  void VisitExpr_(const CallNode *op, std::ostream &os) override;
 
   void VisitExpr(const PrimExpr &n, std::ostream &os) override;
 
@@ -99,6 +100,7 @@ private:
         {"global", "gdram"},
         {"local", "nram"},
         {"local.wram", "wram"},
+        {"local.ldram", "ldram"},
     };
     return res;
   }
