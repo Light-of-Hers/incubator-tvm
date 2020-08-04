@@ -23,11 +23,6 @@
  */
 #include "transform.h"
 
-#include <topi/broadcast.h>
-#include <topi/elemwise.h>
-#include <topi/nn.h>
-#include <topi/reduction.h>
-#include <topi/transform.h>
 #include <tvm/ir/error.h>
 #include <tvm/relay/attrs/transform.h>
 #include <tvm/relay/op.h>
@@ -35,6 +30,11 @@
 #include <tvm/tir/data_layout.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/op.h>
+#include <tvm/topi/broadcast.h>
+#include <tvm/topi/elemwise.h>
+#include <tvm/topi/nn.h>
+#include <tvm/topi/reduction.h>
+#include <tvm/topi/transform.h>
 
 #include <vector>
 
@@ -576,6 +576,8 @@ bool ReshapeRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
         infer_dim = indexdiv(infer_dim, oshape[i]);
       }
     }
+    arith::Analyzer ana;
+    infer_dim = ana.Simplify(infer_dim);
     oshape.Set(infer_idx, infer_dim);
   }
 
@@ -2738,9 +2740,6 @@ bool GatherNDRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
   Array<IndexExpr> oshape;
   for (size_t i = 1; i < kdim + 1; ++i) oshape.push_back(indices->shape[i]);
   for (size_t i = mdim->value; i < ndim; ++i) oshape.push_back(data->shape[i]);
-  if (oshape.size() == 0) {
-    oshape.push_back(tir::make_const(DataType::Int(32), 1));
-  }
   reporter->Assign(types[2], TensorType(oshape, data->dtype));
   return true;
 }
