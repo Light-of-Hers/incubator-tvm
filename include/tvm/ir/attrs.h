@@ -353,7 +353,8 @@ struct AttrInitEntry {
   ~AttrInitEntry() DMLC_THROW_EXCEPTION {
     if (value_missing_) {
       std::ostringstream os;
-      os << type_key_ << ": Cannot find required field \'" << key_ << "\' during initialization";
+      os << type_key_ << ": Cannot find required field \'" << key_ << "\' during initialization."
+         << "If the key is defined check that its type matches the declared type.";
       throw AttrError(os.str());
     }
   }
@@ -475,6 +476,10 @@ class AttrInitVisitor {
     } else {
       opt.value_missing_ = true;
     }
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Wpessimizing-move"
+#endif
     return std::move(opt);
   }
 

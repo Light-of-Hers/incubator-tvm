@@ -237,7 +237,3 @@ conda/pkg
 # nix files
 .envrc
 *.nix
-
-# antlr files
-*.tokens
-*.interp
