@@ -8,6 +8,7 @@
 #include <tvm/tir/expr.h>
 #include "../../tir/ir/functor_common.h"
 #include <vector>
+#include <tvm/tir/builtin.h>
 
 namespace tvm {
 namespace tir {
@@ -22,7 +23,7 @@ public:
 protected:
   void VisitStmt_(const EvaluateNode *op) override {
     const auto call = op->value.as<CallNode>();
-    if (call && call->is_intrinsic(intrinsic::tvm_storage_sync)) {
+    if (call && call->op.same_as(builtin::tvm_storage_sync())) {
       sync_points_.push_back(GetRef<Stmt>(op));
     }
     StmtVisitor::VisitStmt_(op);

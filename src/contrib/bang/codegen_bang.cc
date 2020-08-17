@@ -372,9 +372,9 @@ void CodeGenBANG::VisitExpr(const PrimExpr &n, std::ostream &os) {
   CodeGenC::VisitExpr(n, os);
 }
 void CodeGenBANG::VisitExpr_(const CallNode *op, std::ostream &os) {
-  if ((op->call_type == CallNode::Extern
-      || op->call_type == CallNode::PureExtern)
-      && op->name == "__bang_update_with") {
+  if ((op->op.same_as(builtin_call_extern_)
+      || op->op.same_as(builtin_call_pure_extern_))
+      && op->op.as<OpNode>()->name == "__bang_update_with") {
     auto bytes = op->dtype.bytes();
     auto lanes = op->dtype.lanes();
     auto type = Type2String(op->dtype);
